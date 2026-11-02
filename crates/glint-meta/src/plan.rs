@@ -127,6 +127,10 @@ pub fn plan_install(
                 }
                 LibraryKind::Natives { exclude } => plan.natives.push((dest.clone(), exclude.clone())),
             }
+            // Forge lists jars its installer generates locally with an empty URL.
+            if file.url.is_empty() {
+                continue;
+            }
             let file = PlannedFile {
                 url: file.url,
                 dest,

@@ -15,10 +15,13 @@ glint-java = { path = "crates/glint-java" }
 glint-auth = { path = "crates/glint-auth" }
 glint-launch = { path = "crates/glint-launch" }
 glint-instance = { path = "crates/glint-instance" }
+glint-loader = { path = "crates/glint-loader" }
+glint-modrinth = { path = "crates/glint-modrinth" }
 
 dirs = "6"
 futures-util = "0.3"
 hex = "0.4"
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 md-5 = "0.10"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }

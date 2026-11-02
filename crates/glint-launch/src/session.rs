@@ -8,6 +8,7 @@ use glint_java::{DEFAULT_INDEX_URL, JavaRuntimes, LEGACY_COMPONENT};
 use glint_meta::{MetaClient, Platform, Progress};
 use serde::Serialize;
 
+use crate::injector;
 use crate::log::LogParser;
 use crate::{LaunchOptions, build_command, prepare, spawn};
 
@@ -17,6 +18,9 @@ pub struct PlayRequest {
     pub instance_name: String,
     pub identity: LaunchIdentity,
     pub max_memory_mb: u32,
+    /// Fabric, Quilt, Forge or NeoForge build to run the game with.
+    pub loader: Option<glint_core::Loader>,
+    pub extra_jvm_args: Vec<String>,
 }
 
 /// Progress of a play request, in the order it happens. Serialized for the UI.
@@ -25,6 +29,8 @@ pub struct PlayRequest {
 pub enum PlayEvent {
     Resolving { version: String },
     Downloading { what: Download, done_files: usize, total_files: usize, done_bytes: u64, total_bytes: u64 },
+    /// Installing a mod loader; Forge and NeoForge patch the game here, which takes a while.
+    InstallingLoader { name: String },
     Preparing,
     Started { pid: Option<u32> },
     Log { level: String, message: String },
@@ -50,6 +56,8 @@ pub enum PlayError {
     Core(#[from] glint_core::Error),
     #[error(transparent)]
     Launch(#[from] crate::Error),
+    #[error(transparent)]
+    Loader(#[from] glint_loader::Error),
 }
 
 /// Runs a version from nothing to an exited game, reporting every step to `emit`.
@@ -68,18 +76,37 @@ pub async fn play(
     let entry = manifest
         .find(&request.version_id)
         .ok_or_else(|| PlayError::UnknownVersion(request.version_id.clone()))?;
-    let version = meta.version(entry).await?;
-    let index = meta.asset_index(&version).await?;
-    let plan = meta.plan(&version, index.as_ref(), &platform);
+    let vanilla = meta.version(entry).await?;
+    let index = meta.asset_index(&vanilla).await?;
+    let mut plan = meta.plan(&vanilla, index.as_ref(), &platform);
 
     meta.install(&plan, throttled(Download::Game, &emit)).await?;
 
-    let component = version.java_version.as_ref().map_or(LEGACY_COMPONENT, |j| j.component.as_str());
-    let java = JavaRuntimes::new(http, paths.java(), DEFAULT_INDEX_URL)
+    let component = vanilla.java_version.as_ref().map_or(LEGACY_COMPONENT, |j| j.component.as_str());
+    let java = JavaRuntimes::new(http.clone(), paths.java(), DEFAULT_INDEX_URL)
         .ensure(component, &platform, throttled(Download::Java, &emit))
         .await?;
 
+    // Loaders build on the installed vanilla files, then add their own libraries.
+    let version = match &request.loader {
+        Some(loader) => {
+            emit(PlayEvent::InstallingLoader { name: glint_loader::display_name(loader.kind).to_owned() });
+            let version =
+                glint_loader::install(&http, meta, &vanilla, loader.kind, &loader.version, &java, &platform).await?;
+            plan = meta.plan(&version, index.as_ref(), &platform);
+            meta.install(&plan, throttled(Download::Game, &emit)).await?;
+            version
+        }
+        None => vanilla,
+    };
+
     emit(PlayEvent::Preparing);
+    let mut extra_jvm_args = request.extra_jvm_args.clone();
+    if let Some(target) = &request.identity.auth_server {
+        let downloader = glint_net::Downloader::new(http.clone(), 2);
+        let jar = injector::ensure(&http, &downloader, &paths.meta().join("authlib-injector"), injector::LATEST_URL).await?;
+        extra_jvm_args.push(injector::javaagent_arg(&jar, target));
+    }
     let instance = paths.instance(&request.instance_name)?;
     let game_dir = instance.join("game");
     let natives_dir = instance.join("natives");
@@ -92,7 +119,7 @@ pub async fn play(
         game_assets,
         identity: request.identity,
         max_memory_mb: request.max_memory_mb,
-        extra_jvm_args: Vec::new(),
+        extra_jvm_args,
         resolution: None,
         quick_play_server: None,
         launcher_version: env!("CARGO_PKG_VERSION").into(),

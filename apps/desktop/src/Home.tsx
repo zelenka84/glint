@@ -77,7 +77,7 @@ export function Home(props: Props) {
               <h1 className="pix">{selected.name}</h1>
               <div className="chips">
                 <span className="chip px2">{selected.gameVersion}</span>
-                <span className="chip px2">{selected.loader ?? "Vanilla"}</span>
+                <span className="chip px2">{selected.loader ? `${selected.loader} ${selected.loaderVersion ?? ""}` : "Vanilla"}</span>
                 <span className="chip px2">{selected.maxMemoryMb / 1024} GB</span>
                 <span className="chip px2">{relativeTime(selected.lastPlayed)}</span>
               </div>
@@ -106,6 +106,7 @@ export function Home(props: Props) {
                       {accounts.accounts.map((a) => (
                         <option key={a.uuid} value={a.uuid}>
                           {a.name}
+                          {a.kind === "ely" ? " · Ely.by" : ""}
                         </option>
                       ))}
                     </select>

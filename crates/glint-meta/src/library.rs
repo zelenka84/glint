@@ -1,7 +1,7 @@
 //! Turning `libraries` entries into concrete files for one platform.
 
 use crate::mojang::{Artifact, Library};
-use crate::rules::{Platform, rules_allow};
+use crate::rules::{Arch, Platform, rules_allow};
 
 /// One file a library contributes on the current platform.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,9 +63,24 @@ fn from_artifact(lib: &Library, artifact: &Artifact, classifier: Option<&str>, k
     })
 }
 
+/// Recent versions list `natives-windows-arm64` and `natives-windows-x86` jars whose
+/// rules only check the OS; keep only the ones for this CPU.
+fn native_matches_arch(name: &str, platform: &Platform) -> bool {
+    let Some(classifier) = name.split(':').nth(3).filter(|c| c.starts_with("natives-")) else {
+        return true;
+    };
+    if classifier.ends_with("-arm64") {
+        platform.arch == Arch::Arm64
+    } else if classifier.ends_with("-x86") {
+        platform.arch == Arch::X86
+    } else {
+        true
+    }
+}
+
 /// Files `lib` needs on `platform`. Empty when its rules exclude this platform.
 pub fn library_files(lib: &Library, platform: &Platform) -> Vec<LibraryFile> {
-    if !rules_allow(&lib.rules, platform) {
+    if !rules_allow(&lib.rules, platform) || !native_matches_arch(&lib.name, platform) {
         return Vec::new();
     }
     let mut files = Vec::new();
@@ -143,6 +158,22 @@ mod tests {
         assert_eq!(win.len(), 1);
         assert_eq!(win[0].kind, LibraryKind::Classpath);
         assert!(library_files(&l, &Platform::new(Os::Linux, Arch::X86_64)).is_empty());
+    }
+
+    #[test]
+    fn natives_for_other_cpus_are_skipped() {
+        let make = |classifier: &str| {
+            lib(&format!(
+                r#"{{"name": "org.lwjgl:lwjgl:3.3.3:{classifier}",
+                    "downloads": {{"artifact": {{"path": "x.jar", "sha1": "a", "size": 1, "url": "https://x/x.jar"}}}},
+                    "rules": [{{"action": "allow", "os": {{"name": "windows"}}}}]}}"#
+            ))
+        };
+        let x64 = Platform::new(Os::Windows, Arch::X86_64);
+        assert_eq!(library_files(&make("natives-windows"), &x64).len(), 1);
+        assert!(library_files(&make("natives-windows-arm64"), &x64).is_empty());
+        assert!(library_files(&make("natives-windows-x86"), &x64).is_empty());
+        assert_eq!(library_files(&make("natives-windows-arm64"), &Platform::new(Os::Windows, Arch::Arm64)).len(), 1);
     }
 
     #[test]

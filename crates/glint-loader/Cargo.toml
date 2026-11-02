@@ -1,0 +1,22 @@
+[package]
+name = "glint-loader"
+description = "Mod loaders for the Glint launcher: Fabric, Quilt, Forge and NeoForge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+glint-core.workspace = true
+glint-meta.workspace = true
+glint-net.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

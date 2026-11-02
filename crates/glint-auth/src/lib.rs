@@ -1,8 +1,12 @@
-//! Accounts for Glint.
+//! Accounts for Glint: offline names and Ely.by accounts now, Microsoft next.
 //!
-//! Offline names are available once a Microsoft account that owns Minecraft has
-//! signed in at least once (the same rule Prism Launcher uses). Builds made for
-//! development can lift that requirement with [`OfflinePolicy::Unrestricted`].
+//! Neither offline names nor Ely.by prove that the player owns Minecraft, so both
+//! become available once a Microsoft account that owns the game has signed in at
+//! least once (the same rule Prism Launcher uses for offline names). Builds made
+//! for development lift that requirement with [`OfflinePolicy::Unrestricted`].
+
+pub mod ely;
+pub mod keychain;
 
 use std::path::{Path, PathBuf};
 
@@ -16,8 +20,23 @@ pub enum Error {
     #[error("{0:?} is not a valid Minecraft name: use 3–16 letters, digits or _")]
     InvalidName(String),
 
-    #[error("sign in once with a Microsoft account that owns Minecraft to use offline names")]
+    #[error("sign in once with a Microsoft account that owns Minecraft to use offline names and Ely.by accounts")]
     OwnershipRequired,
+
+    #[error("Ely.by: {0}")]
+    Rejected(String),
+
+    #[error("this Ely.by account uses two-factor authentication; enter the code from your app")]
+    TwoFactorRequired,
+
+    #[error("the Ely.by session has expired; sign in again in Settings")]
+    SessionExpired,
+
+    #[error("could not reach the sign-in server: {0}")]
+    Network(String),
+
+    #[error("could not use the system credential store: {0}")]
+    Keychain(String),
 
     #[error("an account named {0:?} already exists")]
     Duplicate(String),
@@ -37,7 +56,7 @@ pub enum Error {
     },
 }
 
-/// Whether offline names need a verified game owner first.
+/// Whether offline names and Ely.by accounts need a verified game owner first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OfflinePolicy {
     /// Release builds.
@@ -50,23 +69,30 @@ pub enum OfflinePolicy {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Account {
     Offline { name: String, uuid: String },
+    /// Tokens live in the system credential store, see [`keychain`].
+    Ely { name: String, uuid: String },
 }
 
 impl Account {
     pub fn name(&self) -> &str {
         match self {
-            Self::Offline { name, .. } => name,
+            Self::Offline { name, .. } | Self::Ely { name, .. } => name,
         }
     }
 
     pub fn uuid(&self) -> &str {
         match self {
-            Self::Offline { uuid, .. } => uuid,
+            Self::Offline { uuid, .. } | Self::Ely { uuid, .. } => uuid,
         }
     }
 
-    /// What the game needs to know about the player at launch.
-    pub fn identity(&self) -> LaunchIdentity {
+    pub fn needs_session(&self) -> bool {
+        matches!(self, Self::Ely { .. })
+    }
+
+    /// What the game needs to know about the player at launch. `access_token` is
+    /// the account's current session token; offline accounts ignore it.
+    pub fn identity(&self, access_token: Option<&str>) -> LaunchIdentity {
         match self {
             Self::Offline { name, uuid } => LaunchIdentity {
                 name: name.clone(),
@@ -74,6 +100,15 @@ impl Account {
                 access_token: "0".into(),
                 user_type: "legacy".into(),
                 xuid: "0".into(),
+                auth_server: None,
+            },
+            Self::Ely { name, uuid } => LaunchIdentity {
+                name: name.clone(),
+                uuid: uuid.clone(),
+                access_token: access_token.unwrap_or("0").to_owned(),
+                user_type: "mojang".into(),
+                xuid: "0".into(),
+                auth_server: Some(ely::AUTHLIB_INJECTOR_TARGET.into()),
             },
         }
     }
@@ -88,6 +123,8 @@ pub struct LaunchIdentity {
     pub access_token: String,
     pub user_type: String,
     pub xuid: String,
+    /// authlib-injector target for accounts on an alternative auth server (`ely.by`).
+    pub auth_server: Option<String>,
 }
 
 /// Minecraft's own rule for player names.
@@ -105,6 +142,19 @@ pub fn offline_uuid(name: &str) -> String {
     hex::encode(bytes)
 }
 
+/// A random 128-bit token in hex. Uses the OS random source through `std`'s hasher seeds
+/// mixed with time, which is plenty for a non-secret client identifier.
+fn new_client_token() -> String {
+    use std::hash::{BuildHasher, Hasher};
+    let mut bytes = [0u8; 16];
+    for chunk in bytes.chunks_mut(8) {
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+        chunk.copy_from_slice(&h.finish().to_le_bytes());
+    }
+    hex::encode(bytes)
+}
+
 /// `accounts.json`: saved accounts, the active one and whether ownership was verified.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AccountStore {
@@ -116,6 +166,9 @@ pub struct AccountStore {
     accounts: Vec<Account>,
     #[serde(default)]
     active: Option<String>,
+    /// Identifies this Glint install to Yggdrasil-style auth servers such as Ely.by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_token: Option<String>,
 }
 
 impl AccountStore {
@@ -180,6 +233,31 @@ impl AccountStore {
         Ok(self.accounts.last().expect("just pushed"))
     }
 
+    /// Adds or refreshes an Ely.by account after a successful sign-in and makes it active.
+    pub fn add_ely(&mut self, name: &str, uuid: &str, policy: OfflinePolicy) -> Result<&Account> {
+        if policy == OfflinePolicy::RequireOwnership && !self.ownership_verified {
+            return Err(Error::OwnershipRequired);
+        }
+        let account = Account::Ely { name: name.to_owned(), uuid: uuid.to_owned() };
+        let index = match self.accounts.iter().position(|a| a.uuid() == uuid) {
+            Some(i) => {
+                self.accounts[i] = account;
+                i
+            }
+            None => {
+                self.accounts.push(account);
+                self.accounts.len() - 1
+            }
+        };
+        self.active = Some(uuid.to_owned());
+        Ok(&self.accounts[index])
+    }
+
+    /// This install's client token, created on first use. Save the store afterwards.
+    pub fn client_token(&mut self) -> String {
+        self.client_token.get_or_insert_with(new_client_token).clone()
+    }
+
     pub fn remove(&mut self, uuid: &str) {
         self.accounts.retain(|a| a.uuid() != uuid);
         if self.active.as_deref() == Some(uuid) {
@@ -227,6 +305,30 @@ mod tests {
     }
 
     #[test]
+    fn ely_accounts_follow_the_same_rule_and_replace_by_uuid() {
+        let mut store = AccountStore::default();
+        assert!(matches!(store.add_ely("Steve", "u1", OfflinePolicy::RequireOwnership), Err(Error::OwnershipRequired)));
+
+        store.add_ely("Steve", "u1", OfflinePolicy::Unrestricted).unwrap();
+        store.add_ely("Steve2", "u1", OfflinePolicy::Unrestricted).unwrap();
+        assert_eq!(store.accounts().len(), 1);
+        let account = store.active().unwrap();
+        assert_eq!(account.name(), "Steve2");
+        let identity = account.identity(Some("token"));
+        assert_eq!((identity.access_token.as_str(), identity.user_type.as_str()), ("token", "mojang"));
+        assert_eq!(identity.auth_server.as_deref(), Some("ely.by"));
+    }
+
+    #[test]
+    fn client_token_is_stable_once_created() {
+        let mut store = AccountStore::default();
+        let token = store.client_token();
+        assert_eq!(token.len(), 32);
+        assert_eq!(store.client_token(), token);
+        assert_ne!(AccountStore::default().client_token(), token);
+    }
+
+    #[test]
     fn development_policy_skips_the_ownership_check() {
         let mut store = AccountStore::default();
         assert!(store.add_offline("DevPlayer", OfflinePolicy::Unrestricted).is_ok());
@@ -249,6 +351,6 @@ mod tests {
         let loaded = AccountStore::load(&path).unwrap();
         assert!(loaded.ownership_verified());
         assert_eq!(loaded.accounts().len(), 1);
-        assert_eq!(loaded.active().unwrap().identity().access_token, "0");
+        assert_eq!(loaded.active().unwrap().identity(None).access_token, "0");
     }
 }

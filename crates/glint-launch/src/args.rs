@@ -187,7 +187,7 @@ mod tests {
             game_dir: "/inst/game".into(),
             natives_dir: "/inst/natives".into(),
             game_assets: "/meta/assets".into(),
-            identity: account.identity(),
+            identity: account.identity(None),
             max_memory_mb: 4096,
             extra_jvm_args: vec!["-XX:+UseG1GC".into()],
             resolution: None,

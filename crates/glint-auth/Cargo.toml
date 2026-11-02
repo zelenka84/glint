@@ -1,16 +1,20 @@
 [package]
 name = "glint-auth"
-description = "Accounts for the Glint launcher: offline names now, Microsoft sign-in next"
+description = "Accounts for the Glint launcher: offline names and Ely.by now, Microsoft sign-in next"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 hex.workspace = true
+keyring.workspace = true
 md-5.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio.workspace = true
+wiremock.workspace = true

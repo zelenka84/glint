@@ -9,7 +9,9 @@ license.workspace = true
 glint-auth.workspace = true
 glint-core.workspace = true
 glint-java.workspace = true
+glint-loader.workspace = true
 glint-meta.workspace = true
+glint-net.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 thiserror.workspace = true
@@ -18,7 +20,9 @@ tracing.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
-glint-net.workspace = true
+hex.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tempfile.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+wiremock.workspace = true

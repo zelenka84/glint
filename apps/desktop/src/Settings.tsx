@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from "react";
+import { ElySignInModal, PlayerHead, accountKindLabel } from "./Accounts";
 import type { Accounts, AppInfo } from "./api";
 import { type Appearance, fonts, themes, type ThemeName } from "./theme";
 import { B3D, Icon } from "./ui";
@@ -9,6 +10,7 @@ type Props = {
   accounts: Accounts | null;
   info: AppInfo | null;
   onAddName: (name: string) => Promise<void>;
+  onElySignIn: (login: string, password: string, totp?: string) => Promise<void>;
   onRemove: (uuid: string) => void;
   onActivate: (uuid: string) => void;
 };
@@ -16,6 +18,7 @@ type Props = {
 export function Settings(props: Props) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [elyOpen, setElyOpen] = useState(false);
   const { appearance, accounts } = props;
 
   async function add(e: FormEvent) {
@@ -38,15 +41,16 @@ export function Settings(props: Props) {
       <section className="panel px4">
         <h2 className="pix">Players</h2>
         <p className="muted small">
-          Offline names play in single player, on LAN and on servers with online-mode off.
-          {props.info?.devBuild ? " Development build: offline names need no Microsoft sign-in." : ""}
+          Offline names play in single player, on LAN and on servers with online-mode off. Ely.by accounts add a
+          password-protected nickname and a skin, and work on servers that use Ely.by.
+          {props.info?.devBuild ? " Development build: neither needs a Microsoft sign-in." : ""}
         </p>
         <ul className="account-list">
           {accounts?.accounts.map((a) => (
             <li key={a.uuid} className={`account-row px2 ${a.uuid === accounts.active ? "active" : ""}`}>
-              <Icon name="user" />
+              <PlayerHead account={a} size={28} />
               <span className="grow">{a.name}</span>
-              <span className="muted small">Offline</span>
+              <span className="muted small">{accountKindLabel(a)}</span>
               {a.uuid === accounts.active ? (
                 <span className="tag px2">Active</span>
               ) : (
@@ -60,6 +64,13 @@ export function Settings(props: Props) {
             </li>
           ))}
         </ul>
+        {accounts?.offlineAllowed && (
+          <div className="row">
+            <B3D variant="accent" onClick={() => setElyOpen(true)}>
+              <span className="pix">Sign in with Ely.by</span>
+            </B3D>
+          </div>
+        )}
         {accounts?.offlineAllowed ? (
           <form className="row" onSubmit={add}>
             <label className="field grow">
@@ -77,9 +88,20 @@ export function Settings(props: Props) {
             </B3D>
           </form>
         ) : (
-          <p className="muted small">Sign in once with a Microsoft account that owns Minecraft to use offline names.</p>
+          <p className="muted small">
+            Sign in once with a Microsoft account that owns Minecraft to use offline names and Ely.by accounts.
+          </p>
         )}
         {error && <p className="error">{error}</p>}
+        {elyOpen && (
+          <ElySignInModal
+            onClose={() => setElyOpen(false)}
+            onSignIn={async (login, password, totp) => {
+              await props.onElySignIn(login, password, totp);
+              setElyOpen(false);
+            }}
+          />
+        )}
       </section>
 
       <section className="panel px4">

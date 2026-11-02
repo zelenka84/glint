@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { PlayerHead, accountKindLabel } from "./Accounts";
 import { api, type Accounts, type AppInfo, type Instance, type VersionList } from "./api";
 import { Home } from "./Home";
 import { DeleteInstanceModal, EditInstanceModal, KillInstanceModal, NewInstanceModal } from "./InstanceModals";
 import { Library } from "./Library";
+import { Mods } from "./Mods";
 import { SparkleMark, Wordmark } from "./Logo";
 import { applyEvent, type Session } from "./session";
 import { Settings } from "./Settings";
@@ -12,7 +14,7 @@ import { Icon, type IconName } from "./ui";
 import "./fonts";
 import "./App.css";
 
-type Screen = "home" | "library" | "settings";
+type Screen = "home" | "library" | "mods" | "settings";
 
 type Dialog =
   | { kind: "new" }
@@ -24,7 +26,7 @@ type Dialog =
 const NAV: { id: Screen | "mods" | "friends" | "studio"; label: string; icon: IconName; soon?: boolean }[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "library", label: "Library", icon: "library" },
-  { id: "mods", label: "Mods", icon: "mods", soon: true },
+  { id: "mods", label: "Mods", icon: "mods" },
   { id: "friends", label: "Friends", icon: "friends", soon: true },
   { id: "studio", label: "Glint Studio", icon: "studio", soon: true },
 ];
@@ -139,12 +141,10 @@ function App() {
             <span className="grow">Settings</span>
           </button>
           <button className="account-card px4" onClick={() => setScreen("settings")}>
-            <span className="avatar px2">
-              <Icon name="user" />
-            </span>
+            <PlayerHead account={active} />
             <span className="account-text">
               <span className="account-name">{active?.name ?? "No player"}</span>
-              <span className="muted small">{active ? "Offline name" : "Add a name"}</span>
+              <span className="muted small">{active ? accountKindLabel(active) : "Add a player"}</span>
             </span>
           </button>
         </nav>
@@ -175,6 +175,14 @@ function App() {
               onAccount={async (uuid) => setAccounts(await api.setActiveAccount(uuid))}
             />
           )}
+          {screen === "mods" && (
+            <Mods
+              instances={instances}
+              selected={selected?.name ?? null}
+              onSelect={setSelectedName}
+              onCreate={() => setDialog({ kind: "new" })}
+            />
+          )}
           {screen === "library" && (
             <Library
               instances={instances}
@@ -199,6 +207,7 @@ function App() {
               accounts={accounts}
               info={info}
               onAddName={async (name) => setAccounts(await api.addOfflineAccount(name))}
+              onElySignIn={async (login, password, totp) => setAccounts(await api.elySignIn(login, password, totp))}
               onRemove={async (uuid) => setAccounts(await api.removeAccount(uuid))}
               onActivate={async (uuid) => setAccounts(await api.setActiveAccount(uuid))}
             />

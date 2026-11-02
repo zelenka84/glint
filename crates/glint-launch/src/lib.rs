@@ -6,6 +6,7 @@
 
 mod args;
 mod assets;
+pub mod injector;
 mod log;
 mod natives;
 mod process;
@@ -38,6 +39,9 @@ pub enum Error {
         #[source]
         source: zip::result::ZipError,
     },
+
+    #[error("authlib-injector: {0}")]
+    Injector(String),
 
     #[error("could not start Java at {path}: {source}")]
     Spawn {

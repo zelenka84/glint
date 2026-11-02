@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 type ButtonProps = {
   children: ReactNode;
@@ -63,7 +64,8 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  // Rendered into <body>: panels clip their content with clip-path, which would cut a dialog in half.
+  return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal px4 drop" role="dialog" aria-modal="true" aria-label={title} ref={dialog}>
         <div className="modal-head">
@@ -74,7 +76,8 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -96,6 +99,7 @@ const ICONS = {
   check: "M2 8h2v2H2zM4 10h2v2H4zM6 8h2v2H6zM8 6h2v2H8zM10 4h2v2h-2zM12 2h2v2h-2z",
   user: "M5 2h6v6H5zM3 10h10v4H3z",
   link: "M1 5h7v1H1zM1 10h7v1H1zM1 5h1v6H1zM8 5h7v1H8zM8 10h7v1H8zM14 5h1v6h-1zM5 7h6v2H5z",
+  search: "M5 2h5v2H5zM3 4h2v5H3zM10 4h2v5h-2zM5 9h5v2H5zM11 11h2v2h-2zM13 13h2v2h-2z",
   stop: "M3 3h10v10H3z",
 } as const;
 

@@ -25,6 +25,8 @@ function nextPhase(event: PlayEvent, previous: Phase): Phase {
       const label = `Downloading ${what} · ${mb(event.doneBytes)}/${mb(event.totalBytes)} MB`;
       return { kind: "busy", label, done: event.doneBytes, total: Math.max(event.totalBytes, 1) };
     }
+    case "installingLoader":
+      return { kind: "busy", label: `Installing ${event.name} · first time can take a minute`, done: 1, total: 2 };
     case "preparing":
       return { kind: "busy", label: "Preparing", done: 1, total: 1 };
     case "started":
