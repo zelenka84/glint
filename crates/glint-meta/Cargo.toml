@@ -1,0 +1,24 @@
+[package]
+name = "glint-meta"
+description = "Minecraft version metadata: Mojang manifests, libraries, assets and install plans"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+futures-util.workspace = true
+glint-core.workspace = true
+glint-net.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+hex.workspace = true
+sha1.workspace = true
+tempfile.workspace = true
+wiremock.workspace = true

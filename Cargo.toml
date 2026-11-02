@@ -10,10 +10,12 @@ license = "GPL-3.0-or-later"
 [workspace.dependencies]
 glint-core = { path = "crates/glint-core" }
 glint-net = { path = "crates/glint-net" }
+glint-meta = { path = "crates/glint-meta" }
 
 dirs = "6"
 futures-util = "0.3"
 hex = "0.4"
+regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

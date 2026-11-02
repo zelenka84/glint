@@ -1446,6 +1446,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "glint-meta"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "glint-core",
+ "glint-net",
+ "hex",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "glint-net"
 version = "0.1.0"
 dependencies = [
