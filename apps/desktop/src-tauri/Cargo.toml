@@ -29,3 +29,8 @@ serde_json.workspace = true
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tracing.workspace = true
+
+[features]
+# Personal build for testing with friends: offline names without a Microsoft check,
+# like a dev build, but packed into one exe (see scripts/install-local.ps1).
+local = []

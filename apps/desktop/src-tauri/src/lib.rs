@@ -10,14 +10,19 @@ use glint_instance::InstanceStore;
 use glint_launch::{PlayEvent, PlayRequest};
 use glint_meta::mojang::VersionType;
 use glint_meta::{Endpoints, MetaClient, MetaLayout};
-use glint_modrinth::{InstalledMod, ModManager, ModrinthApi, ProjectType, SearchQuery, SearchResults, Target};
+use glint_modrinth::{
+    InstalledMod, ModManager, ModrinthApi, ProjectType, SearchQuery, SearchResults, Target,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-/// Offline names need a verified game owner in release builds only.
-const OFFLINE_POLICY: OfflinePolicy =
-    if cfg!(debug_assertions) { OfflinePolicy::Unrestricted } else { OfflinePolicy::RequireOwnership };
+/// Offline names need a verified game owner in public release builds only.
+const OFFLINE_POLICY: OfflinePolicy = if cfg!(any(debug_assertions, feature = "local")) {
+    OfflinePolicy::Unrestricted
+} else {
+    OfflinePolicy::RequireOwnership
+};
 
 /// Event name the UI listens to while games are installing or running.
 const PLAY_EVENT: &str = "play";
@@ -45,7 +50,9 @@ struct AppState {
 
 impl AppState {
     fn save_accounts(&self, store: &AccountStore) -> CmdResult<()> {
-        store.save(&self.paths.root().join("accounts.json")).map_err(err)
+        store
+            .save(&self.paths.root().join("accounts.json"))
+            .map_err(err)
     }
 }
 
@@ -79,7 +86,10 @@ async fn versions(state: State<'_, AppState>) -> CmdResult<VersionList> {
             release_time: v.release_time.clone(),
         })
         .collect();
-    Ok(VersionList { latest_release: manifest.latest.release, versions })
+    Ok(VersionList {
+        latest_release: manifest.latest.release,
+        versions,
+    })
 }
 
 // ---- accounts ----
@@ -115,7 +125,8 @@ fn accounts_view(store: &AccountStore) -> AccountsView {
             })
             .collect(),
         active: store.active().map(|a| a.uuid().to_owned()),
-        offline_allowed: OFFLINE_POLICY == OfflinePolicy::Unrestricted || store.ownership_verified(),
+        offline_allowed: OFFLINE_POLICY == OfflinePolicy::Unrestricted
+            || store.ownership_verified(),
     }
 }
 
@@ -127,7 +138,11 @@ fn accounts(state: State<'_, AppState>) -> AccountsView {
 #[tauri::command]
 fn add_offline_account(state: State<'_, AppState>, name: String) -> CmdResult<AccountsView> {
     let mut store = state.accounts.lock().expect("accounts lock");
-    let uuid = store.add_offline(name.trim(), OFFLINE_POLICY).map_err(err)?.uuid().to_owned();
+    let uuid = store
+        .add_offline(name.trim(), OFFLINE_POLICY)
+        .map_err(err)?
+        .uuid()
+        .to_owned();
     store.set_active(&uuid);
     state.save_accounts(&store)?;
     Ok(accounts_view(&store))
@@ -147,12 +162,17 @@ fn set_active_account(state: State<'_, AppState>, uuid: String) -> CmdResult<Acc
 async fn remove_account(state: State<'_, AppState>, uuid: String) -> CmdResult<AccountsView> {
     let was_ely = {
         let store = state.accounts.lock().expect("accounts lock");
-        store.accounts().iter().any(|a| a.uuid() == uuid && a.needs_session())
+        store
+            .accounts()
+            .iter()
+            .any(|a| a.uuid() == uuid && a.needs_session())
     };
     if was_ely {
         // Sign out on Ely.by too; the account is removed locally even if that fails.
         if let Ok(Some(session)) = keychain::load_ely(&uuid) {
-            let _ = ElyClient::new(state.http.clone()).invalidate(&session).await;
+            let _ = ElyClient::new(state.http.clone())
+                .invalidate(&session)
+                .await;
         }
         keychain::delete_ely(&uuid).map_err(err)?;
     }
@@ -172,7 +192,11 @@ async fn ely_sign_in(
     totp: Option<String>,
 ) -> CmdResult<AccountsView> {
     if OFFLINE_POLICY == OfflinePolicy::RequireOwnership
-        && !state.accounts.lock().expect("accounts lock").ownership_verified()
+        && !state
+            .accounts
+            .lock()
+            .expect("accounts lock")
+            .ownership_verified()
     {
         return Err(glint_auth::Error::OwnershipRequired.to_string());
     }
@@ -192,7 +216,9 @@ async fn ely_sign_in(
     keychain::save_ely(&session).map_err(err)?;
 
     let mut store = state.accounts.lock().expect("accounts lock");
-    store.add_ely(&session.name, &session.uuid, OFFLINE_POLICY).map_err(err)?;
+    store
+        .add_ely(&session.name, &session.uuid, OFFLINE_POLICY)
+        .map_err(err)?;
     state.save_accounts(&store)?;
     Ok(accounts_view(&store))
 }
@@ -217,7 +243,10 @@ fn instance_view(m: &InstanceManifest, running: &HashSet<String>) -> InstanceVie
     InstanceView {
         name: m.name.clone(),
         game_version: m.game_version.clone(),
-        loader: m.loader.as_ref().map(|l| glint_loader::display_name(l.kind).to_owned()),
+        loader: m
+            .loader
+            .as_ref()
+            .map(|l| glint_loader::display_name(l.kind).to_owned()),
         loader_version: m.loader.as_ref().map(|l| l.version.clone()),
         extra_jvm_args: m.java.extra_args.join(" "),
         max_memory_mb: m.java.max_memory_mb,
@@ -230,7 +259,13 @@ fn instance_view(m: &InstanceManifest, running: &HashSet<String>) -> InstanceVie
 #[tauri::command]
 fn instances(state: State<'_, AppState>) -> CmdResult<Vec<InstanceView>> {
     let running = state.running.lock().expect("running lock");
-    Ok(state.instances.list().map_err(err)?.iter().map(|m| instance_view(m, &running)).collect())
+    Ok(state
+        .instances
+        .list()
+        .map_err(err)?
+        .iter()
+        .map(|m| instance_view(m, &running))
+        .collect())
 }
 
 #[derive(Deserialize)]
@@ -272,19 +307,28 @@ async fn loader_versions(
     kind: String,
     game_version: String,
 ) -> CmdResult<Vec<glint_loader::LoaderVersion>> {
-    glint_loader::loader_versions(&state.http, parse_loader_kind(&kind)?, &game_version).await.map_err(err)
+    glint_loader::loader_versions(&state.http, parse_loader_kind(&kind)?, &game_version)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
 fn create_instance(state: State<'_, AppState>, instance: NewInstance) -> CmdResult<String> {
     let name = instance.name.trim();
     let loader = match &instance.loader {
-        Some(choice) => Some(Loader { kind: parse_loader_kind(&choice.kind)?, version: choice.version.clone() }),
+        Some(choice) => Some(Loader {
+            kind: parse_loader_kind(&choice.kind)?,
+            version: choice.version.clone(),
+        }),
         None => None,
     };
     let name = if name.is_empty() {
-        let flavour = loader.as_ref().map_or("Vanilla", |l| glint_loader::display_name(l.kind));
-        state.instances.unique_name(&format!("{flavour} {}", instance.game_version))
+        let flavour = loader
+            .as_ref()
+            .map_or("Vanilla", |l| glint_loader::display_name(l.kind));
+        state
+            .instances
+            .unique_name(&format!("{flavour} {}", instance.game_version))
     } else {
         name.to_owned()
     };
@@ -310,7 +354,11 @@ struct InstanceChanges {
 }
 
 #[tauri::command]
-fn update_instance(state: State<'_, AppState>, name: String, changes: InstanceChanges) -> CmdResult<String> {
+fn update_instance(
+    state: State<'_, AppState>,
+    name: String,
+    changes: InstanceChanges,
+) -> CmdResult<String> {
     if state.running.lock().expect("running lock").contains(&name) {
         return Err("close the game before changing this instance".into());
     }
@@ -323,7 +371,12 @@ fn update_instance(state: State<'_, AppState>, name: String, changes: InstanceCh
     }
     state.instances.save(&manifest).map_err(err)?;
 
-    match changes.name.as_deref().map(str::trim).filter(|n| !n.is_empty() && *n != name) {
+    match changes
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty() && *n != name)
+    {
         Some(new_name) => {
             state.instances.rename(&name, new_name).map_err(err)?;
             Ok(new_name.to_owned())
@@ -344,7 +397,9 @@ fn delete_instance(state: State<'_, AppState>, name: String) -> CmdResult<()> {
 fn open_instance_folder(app: AppHandle, state: State<'_, AppState>, name: String) -> CmdResult<()> {
     let dir = state.instances.game_dir(&name).map_err(err)?;
     std::fs::create_dir_all(&dir).map_err(err)?;
-    app.opener().open_path(dir.display().to_string(), None::<&str>).map_err(err)
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(err)
 }
 
 // ---- playing ----
@@ -360,7 +415,12 @@ struct PlayEnvelope {
 /// Progress and game output arrive as `play` events tagged with the instance name;
 /// the last one is `exited` or `failed`.
 #[tauri::command]
-async fn play(app: AppHandle, state: State<'_, AppState>, instance: String, account: Option<String>) -> CmdResult<()> {
+async fn play(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance: String,
+    account: Option<String>,
+) -> CmdResult<()> {
     let manifest = state.instances.get(&instance).map_err(err)?;
     let chosen = {
         let store = state.accounts.lock().expect("accounts lock");
@@ -371,14 +431,24 @@ async fn play(app: AppHandle, state: State<'_, AppState>, instance: String, acco
         chosen.cloned().ok_or("add a player name first")?
     };
     let identity = if chosen.needs_session() {
-        let session = keychain::load_ely(chosen.uuid()).map_err(err)?.ok_or(glint_auth::Error::SessionExpired.to_string())?;
-        let session = ElyClient::new(state.http.clone()).ensure_valid(session).await.map_err(err)?;
+        let session = keychain::load_ely(chosen.uuid())
+            .map_err(err)?
+            .ok_or(glint_auth::Error::SessionExpired.to_string())?;
+        let session = ElyClient::new(state.http.clone())
+            .ensure_valid(session)
+            .await
+            .map_err(err)?;
         keychain::save_ely(&session).map_err(err)?;
         chosen.identity(Some(&session.access_token))
     } else {
         chosen.identity(None)
     };
-    if !state.running.lock().expect("running lock").insert(instance.clone()) {
+    if !state
+        .running
+        .lock()
+        .expect("running lock")
+        .insert(instance.clone())
+    {
         return Err(format!("{instance} is already running"));
     }
     if let Err(e) = state.instances.mark_played(&instance) {
@@ -397,15 +467,33 @@ async fn play(app: AppHandle, state: State<'_, AppState>, instance: String, acco
         };
         let emit = |event: PlayEvent| {
             if let PlayEvent::Started { pid: Some(pid) } = &event {
-                state.pids.lock().expect("pids lock").insert(instance.clone(), *pid);
+                state
+                    .pids
+                    .lock()
+                    .expect("pids lock")
+                    .insert(instance.clone(), *pid);
             }
-            let _ = app.emit(PLAY_EVENT, PlayEnvelope { instance: instance.clone(), event });
+            let _ = app.emit(
+                PLAY_EVENT,
+                PlayEnvelope {
+                    instance: instance.clone(),
+                    event,
+                },
+            );
         };
-        let result = glint_launch::play(&state.paths, &state.meta, state.http.clone(), request, emit).await;
-        state.running.lock().expect("running lock").remove(&instance);
+        let result =
+            glint_launch::play(&state.paths, &state.meta, state.http.clone(), request, emit).await;
+        state
+            .running
+            .lock()
+            .expect("running lock")
+            .remove(&instance);
         state.pids.lock().expect("pids lock").remove(&instance);
         if state.killed.lock().expect("killed lock").remove(&instance) {
-            let _ = app.emit(PLAY_EVENT, serde_json::json!({"instance": instance, "type": "killed"}));
+            let _ = app.emit(
+                PLAY_EVENT,
+                serde_json::json!({"instance": instance, "type": "killed"}),
+            );
         } else if let Err(e) = result {
             tracing::error!(error = %e, instance, "play failed");
             let failed = serde_json::json!({"instance": instance, "type": "failed", "message": e.to_string()});
@@ -419,8 +507,18 @@ async fn play(app: AppHandle, state: State<'_, AppState>, instance: String, acco
 /// the UI asks the player to confirm first.
 #[tauri::command]
 fn kill_instance(state: State<'_, AppState>, name: String) -> CmdResult<()> {
-    let pid = state.pids.lock().expect("pids lock").get(&name).copied().ok_or("this instance is not running")?;
-    state.killed.lock().expect("killed lock").insert(name.clone());
+    let pid = state
+        .pids
+        .lock()
+        .expect("pids lock")
+        .get(&name)
+        .copied()
+        .ok_or("this instance is not running")?;
+    state
+        .killed
+        .lock()
+        .expect("killed lock")
+        .insert(name.clone());
     kill_process_tree(pid).map_err(|e| {
         state.killed.lock().expect("killed lock").remove(&name);
         format!("could not stop the game: {e}")
@@ -435,22 +533,42 @@ fn kill_process_tree(pid: u32) -> std::io::Result<()> {
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .creation_flags(CREATE_NO_WINDOW)
         .status()?;
-    if status.success() { Ok(()) } else { Err(std::io::Error::other(format!("taskkill exited with {status}"))) }
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "taskkill exited with {status}"
+        )))
+    }
 }
 
 #[cfg(not(windows))]
 fn kill_process_tree(pid: u32) -> std::io::Result<()> {
-    let status = std::process::Command::new("kill").args(["-9", &pid.to_string()]).status()?;
-    if status.success() { Ok(()) } else { Err(std::io::Error::other(format!("kill exited with {status}"))) }
+    let status = std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!("kill exited with {status}")))
+    }
 }
 
 // ---- mods ----
 
 fn mod_target(state: &AppState, instance: &str) -> CmdResult<(std::path::PathBuf, Target)> {
     let manifest = state.instances.get(instance).map_err(err)?;
-    let loader = manifest.loader.ok_or("this instance has no mod loader; create a Fabric, Quilt, Forge or NeoForge instance")?;
+    let loader = manifest.loader.ok_or(
+        "this instance has no mod loader; create a Fabric, Quilt, Forge or NeoForge instance",
+    )?;
     let dir = state.instances.dir(instance).map_err(err)?;
-    Ok((dir, Target { game_version: manifest.game_version, loader: loader.kind }))
+    Ok((
+        dir,
+        Target {
+            game_version: manifest.game_version,
+            loader: loader.kind,
+        },
+    ))
 }
 
 #[tauri::command]
@@ -477,27 +595,51 @@ async fn search_mods(
 }
 
 #[tauri::command]
-async fn install_mod(state: State<'_, AppState>, instance: String, project_id: String) -> CmdResult<Vec<String>> {
+async fn install_mod(
+    state: State<'_, AppState>,
+    instance: String,
+    project_id: String,
+) -> CmdResult<Vec<String>> {
     let (dir, target) = mod_target(&state, &instance)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir).install(&project_id, &target).await.map_err(err)
+    ModManager::new(&state.modrinth, state.http.clone(), dir)
+        .install(&project_id, &target)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
 fn installed_mods(state: State<'_, AppState>, instance: String) -> CmdResult<Vec<InstalledMod>> {
     let dir = state.instances.dir(&instance).map_err(err)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir).list().map_err(err)
+    ModManager::new(&state.modrinth, state.http.clone(), dir)
+        .list()
+        .map_err(err)
 }
 
 #[tauri::command]
-async fn remove_mod(state: State<'_, AppState>, instance: String, filename: String) -> CmdResult<()> {
+async fn remove_mod(
+    state: State<'_, AppState>,
+    instance: String,
+    filename: String,
+) -> CmdResult<()> {
     let dir = state.instances.dir(&instance).map_err(err)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir).remove(&filename).await.map_err(err)
+    ModManager::new(&state.modrinth, state.http.clone(), dir)
+        .remove(&filename)
+        .await
+        .map_err(err)
 }
 
 #[tauri::command]
-async fn set_mod_enabled(state: State<'_, AppState>, instance: String, filename: String, enabled: bool) -> CmdResult<()> {
+async fn set_mod_enabled(
+    state: State<'_, AppState>,
+    instance: String,
+    filename: String,
+    enabled: bool,
+) -> CmdResult<()> {
     let dir = state.instances.dir(&instance).map_err(err)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir).set_enabled(&filename, enabled).await.map_err(err)
+    ModManager::new(&state.modrinth, state.http.clone(), dir)
+        .set_enabled(&filename, enabled)
+        .await
+        .map_err(err)
 }
 
 #[derive(Serialize)]
@@ -513,7 +655,7 @@ fn app_info(state: State<'_, AppState>) -> AppInfo {
     AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         data_dir: state.paths.root().display().to_string(),
-        dev_build: cfg!(debug_assertions),
+        dev_build: cfg!(any(debug_assertions, feature = "local")),
     }
 }
 
@@ -522,7 +664,11 @@ pub fn run() {
     let paths = GlintPaths::from_system().expect("user data directory");
     paths.ensure().expect("create Glint data folders");
     let http = glint_net::http_client();
-    let meta = MetaClient::new(http.clone(), MetaLayout::new(paths.meta()), Endpoints::default());
+    let meta = MetaClient::new(
+        http.clone(),
+        MetaLayout::new(paths.meta()),
+        Endpoints::default(),
+    );
     let store = AccountStore::load(&paths.root().join("accounts.json")).unwrap_or_else(|e| {
         tracing::error!(error = %e, "could not read accounts, starting empty");
         AccountStore::default()
