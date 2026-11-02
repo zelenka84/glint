@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 glint-auth.workspace = true
 glint-core.workspace = true
+glint-instance.workspace = true
 glint-launch.workspace = true
 glint-meta.workspace = true
 glint-net.workspace = true

@@ -10,8 +10,14 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource/handjet": "^5.3.1",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/pixelify-sans": "^5.3.0",
+    "@fontsource/press-start-2p": "^5.3.0",
+    "@fontsource/silkscreen": "^5.3.0",
+    "@fontsource/tektur": "^5.3.0",
+    "@fontsource/tiny5": "^5.3.0",
+    "@fontsource/unbounded": "^5.3.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "react": "^19.1.0",

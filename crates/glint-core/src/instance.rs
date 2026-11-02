@@ -17,6 +17,12 @@ pub struct InstanceManifest {
     pub loader: Option<Loader>,
     #[serde(default)]
     pub java: JavaSettings,
+    /// Cover art preset shown in the library.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
+    /// Unix seconds of the last launch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_played: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +76,8 @@ impl InstanceManifest {
             game_version: game_version.into(),
             loader: None,
             java: JavaSettings::default(),
+            cover: None,
+            last_played: None,
         }
     }
 

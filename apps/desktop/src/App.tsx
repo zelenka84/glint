@@ -1,273 +1,257 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Accounts, type PlayEvent, type VersionList } from "./api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { api, type Accounts, type AppInfo, type Instance, type VersionList } from "./api";
+import { Home } from "./Home";
+import { DeleteInstanceModal, EditInstanceModal, KillInstanceModal, NewInstanceModal } from "./InstanceModals";
+import { Library } from "./Library";
 import { SparkleMark, Wordmark } from "./Logo";
+import { applyEvent, type Session } from "./session";
+import { Settings } from "./Settings";
+import { sceneFor, useAppearance } from "./theme";
+import { Icon, type IconName } from "./ui";
+import "./fonts";
 import "./App.css";
 
-type LogEntry = { id: number; level: string; message: string };
+type Screen = "home" | "library" | "settings";
 
-type Phase =
-  | { kind: "idle" }
-  | { kind: "busy"; label: string; done: number; total: number }
-  | { kind: "running" }
-  | { kind: "failed"; message: string };
+type Dialog =
+  | { kind: "new" }
+  | { kind: "edit"; instance: Instance }
+  | { kind: "delete"; instance: Instance }
+  | { kind: "kill"; instance: Instance }
+  | null;
 
-const MAX_LOG = 500;
-const SEGMENTS = 32;
+const NAV: { id: Screen | "mods" | "friends" | "studio"; label: string; icon: IconName; soon?: boolean }[] = [
+  { id: "home", label: "Home", icon: "home" },
+  { id: "library", label: "Library", icon: "library" },
+  { id: "mods", label: "Mods", icon: "mods", soon: true },
+  { id: "friends", label: "Friends", icon: "friends", soon: true },
+  { id: "studio", label: "Glint Studio", icon: "studio", soon: true },
+];
 
-const mb = (bytes: number) => (bytes / 1e6).toFixed(0);
-
-function phaseFor(event: PlayEvent, previous: Phase): Phase {
-  switch (event.type) {
-    case "resolving":
-      return { kind: "busy", label: `Checking ${event.version}`, done: 0, total: 1 };
-    case "downloading": {
-      const what = event.what === "java" ? "Java" : "game files";
-      const label = `Downloading ${what} · ${mb(event.doneBytes)}/${mb(event.totalBytes)} MB`;
-      return { kind: "busy", label, done: event.doneBytes, total: Math.max(event.totalBytes, 1) };
-    }
-    case "preparing":
-      return { kind: "busy", label: "Preparing", done: 1, total: 1 };
-    case "started":
-      return { kind: "running" };
-    case "exited":
-      return event.code === 0 || event.code === null
-        ? { kind: "idle" }
-        : { kind: "failed", message: `The game exited with code ${event.code}. Check the log below.` };
-    case "failed":
-      return { kind: "failed", message: event.message };
-    case "log":
-      return previous;
-  }
+function TitleBar() {
+  const win = getCurrentWindow();
+  return (
+    <header className="titlebar" data-tauri-drag-region>
+      <div className="brand" data-tauri-drag-region>
+        <SparkleMark />
+        <Wordmark />
+      </div>
+      <div className="window-controls">
+        <button aria-label="Minimize" onClick={() => win.minimize()}>
+          <Icon name="minimize" />
+        </button>
+        <button aria-label="Maximize" onClick={() => win.toggleMaximize()}>
+          <Icon name="maximize" />
+        </button>
+        <button className="close" aria-label="Close" onClick={() => win.close()}>
+          <Icon name="close" size={12} />
+        </button>
+      </div>
+    </header>
+  );
 }
 
 function App() {
+  const [appearance, setAppearance] = useAppearance();
+  const [screen, setScreen] = useState<Screen>("home");
+  const [info, setInfo] = useState<AppInfo | null>(null);
   const [versions, setVersions] = useState<VersionList | null>(null);
-  const [showSnapshots, setShowSnapshots] = useState(false);
-  const [version, setVersion] = useState<string>("");
   const [accounts, setAccounts] = useState<Accounts | null>(null);
-  const [newName, setNewName] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<Phase>({ kind: "idle" });
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const logId = useRef(0);
-  const logEnd = useRef<HTMLDivElement>(null);
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Record<string, Session>>({});
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const refreshInstances = useCallback(() => api.instances().then(setInstances, (e) => setNotice(String(e))), []);
 
   useEffect(() => {
-    api.versions().then(
-      (list) => {
-        setVersions(list);
-        setVersion((current) => current || list.latestRelease);
-      },
-      (e) => setLoadError(String(e)),
-    );
-    api.accounts().then(setAccounts, (e) => setLoadError(String(e)));
-  }, []);
+    api.appInfo().then(setInfo);
+    api.accounts().then(setAccounts, (e) => setNotice(String(e)));
+    api.versions().then(setVersions, (e) => setNotice(`Could not load Minecraft versions: ${e}`));
+    refreshInstances();
+  }, [refreshInstances]);
 
   useEffect(() => {
-    const unlisten = api.onPlayEvent((event) => {
-      setPhase((previous) => phaseFor(event, previous));
-      if (event.type === "log") {
-        const entry = { id: logId.current++, level: event.level, message: event.message };
-        setLog((entries) => [...entries.slice(-(MAX_LOG - 1)), entry]);
+    const unlisten = api.onPlayEvent(({ instance, ...event }) => {
+      setSessions((all) => ({ ...all, [instance]: applyEvent(all[instance], event) }));
+      if (event.type === "started" || event.type === "exited" || event.type === "failed") {
+        refreshInstances();
       }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [refreshInstances]);
 
-  useEffect(() => {
-    logEnd.current?.scrollIntoView({ block: "end" });
-  }, [log]);
-
-  const visibleVersions = useMemo(
-    () => (versions?.versions ?? []).filter((v) => showSnapshots || v.release),
-    [versions, showSnapshots],
+  const selected = useMemo(
+    () => instances.find((i) => i.name === selectedName) ?? instances[0] ?? null,
+    [instances, selectedName],
   );
+  const canPlay = !!accounts?.active;
+
+  async function play(name: string) {
+    setSelectedName(name);
+    try {
+      await api.play(name);
+      setSessions((all) => ({ ...all, [name]: { phase: { kind: "busy", label: "Starting", done: 0, total: 1 }, log: [] } }));
+    } catch (e) {
+      setSessions((all) => ({ ...all, [name]: { phase: { kind: "failed", message: String(e) }, log: all[name]?.log ?? [] } }));
+    }
+  }
+
+  async function openFolder(name: string) {
+    try {
+      await api.openInstanceFolder(name);
+    } catch (e) {
+      setNotice(String(e));
+    }
+  }
+
   const active = accounts?.accounts.find((a) => a.uuid === accounts.active) ?? null;
-  const busy = phase.kind === "busy" || phase.kind === "running";
-
-  async function addName(e: FormEvent) {
-    e.preventDefault();
-    try {
-      setAccounts(await api.addOfflineAccount(newName));
-      setNewName("");
-      setNameError(null);
-      setAdding(false);
-    } catch (err) {
-      setNameError(String(err));
-    }
-  }
-
-  async function play() {
-    setLog([]);
-    try {
-      await api.play(version);
-      setPhase({ kind: "busy", label: "Starting", done: 0, total: 1 });
-    } catch (err) {
-      setPhase({ kind: "failed", message: String(err) });
-    }
-  }
-
-  const filled = phase.kind === "busy" ? Math.round((phase.done / phase.total) * SEGMENTS) : 0;
 
   return (
     <div className="app">
-      <header className="titlebar">
-        <div className="brand">
-          <SparkleMark />
-          <Wordmark />
-        </div>
-        <div className="account">
-          {accounts && accounts.accounts.length > 0 && (
-            <label>
-              <span className="visually-hidden">Player</span>
-              <select
-                className="select px2"
-                value={accounts.active ?? ""}
-                disabled={busy}
-                onChange={async (e) => setAccounts(await api.setActiveAccount(e.target.value))}
-              >
-                {accounts.accounts.map((a) => (
-                  <option key={a.uuid} value={a.uuid}>
-                    {a.name} · offline
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {active && (
-            <>
-              <button
-                className="b3d sm icon"
-                aria-label="Add another name"
-                title="Add another name"
-                disabled={busy}
-                onClick={() => setAdding((a) => !a)}
-              >
-                <span className="edge px2" />
-                <span className="face px2 secondary">+</span>
+      <TitleBar />
+      <div className="body">
+        <nav className="sidebar" aria-label="Sections">
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              className={`nav-item px2 ${screen === item.id ? "active" : ""}`}
+              disabled={item.soon}
+              aria-current={screen === item.id ? "page" : undefined}
+              onClick={() => !item.soon && setScreen(item.id as Screen)}
+            >
+              <Icon name={item.icon} />
+              <span className="grow">{item.label}</span>
+              {item.soon && <span className="soon pix">soon</span>}
+            </button>
+          ))}
+          <div className="grow" />
+          <button
+            className={`nav-item px2 ${screen === "settings" ? "active" : ""}`}
+            aria-current={screen === "settings" ? "page" : undefined}
+            onClick={() => setScreen("settings")}
+          >
+            <Icon name="settings" />
+            <span className="grow">Settings</span>
+          </button>
+          <button className="account-card px4" onClick={() => setScreen("settings")}>
+            <span className="avatar px2">
+              <Icon name="user" />
+            </span>
+            <span className="account-text">
+              <span className="account-name">{active?.name ?? "No player"}</span>
+              <span className="muted small">{active ? "Offline name" : "Add a name"}</span>
+            </span>
+          </button>
+        </nav>
+
+        <main className="main">
+          {notice && (
+            <div className="notice px2" role="alert">
+              <span className="grow">{notice}</span>
+              <button className="icon-btn" aria-label="Dismiss" onClick={() => setNotice(null)}>
+                <Icon name="close" size={12} />
               </button>
-              <button
-                className="b3d sm icon"
-                aria-label={`Remove ${active.name}`}
-                title={`Remove ${active.name}`}
-                disabled={busy}
-                onClick={async () => setAccounts(await api.removeAccount(active.uuid))}
-              >
-                <span className="edge px2" />
-                <span className="face px2 secondary">×</span>
-              </button>
-            </>
+            </div>
           )}
-        </div>
-      </header>
+          {screen === "home" && (
+            <Home
+              scene={sceneFor(appearance.theme)}
+              instances={instances}
+              selected={selected}
+              accounts={accounts}
+              session={selected ? sessions[selected.name] : undefined}
+              onSelect={setSelectedName}
+              onPlay={play}
+              onKill={(instance) => setDialog({ kind: "kill", instance })}
+              onCreate={() => setDialog({ kind: "new" })}
+              onOpenFolder={openFolder}
+              onEdit={(instance) => setDialog({ kind: "edit", instance })}
+              onLibrary={() => setScreen("library")}
+              onAccount={async (uuid) => setAccounts(await api.setActiveAccount(uuid))}
+            />
+          )}
+          {screen === "library" && (
+            <Library
+              instances={instances}
+              sessions={sessions}
+              canPlay={canPlay}
+              onCreate={() => setDialog({ kind: "new" })}
+              onOpen={(name) => {
+                setSelectedName(name);
+                setScreen("home");
+              }}
+              onPlay={play}
+              onOpenFolder={openFolder}
+              onEdit={(instance) => setDialog({ kind: "edit", instance })}
+              onDelete={(instance) => setDialog({ kind: "delete", instance })}
+              onKill={(instance) => setDialog({ kind: "kill", instance })}
+            />
+          )}
+          {screen === "settings" && (
+            <Settings
+              appearance={appearance}
+              onAppearance={setAppearance}
+              accounts={accounts}
+              info={info}
+              onAddName={async (name) => setAccounts(await api.addOfflineAccount(name))}
+              onRemove={async (uuid) => setAccounts(await api.removeAccount(uuid))}
+              onActivate={async (uuid) => setAccounts(await api.setActiveAccount(uuid))}
+            />
+          )}
+        </main>
+      </div>
 
-      <main className="content">
-        <section className="hero px4">
-          <div className="plaque px4">
-            <span className="eyebrow pix">VANILLA</span>
-            <h1 className="pix">{version ? `Minecraft ${version}` : "Minecraft"}</h1>
-
-            <div className="row">
-              <label className="field">
-                <span>Version</span>
-                <select
-                  className="select px2"
-                  value={version}
-                  disabled={busy || !versions}
-                  onChange={(e) => setVersion(e.target.value)}
-                >
-                  {visibleVersions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.id}
-                      {v.id === versions?.latestRelease ? " (latest)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={showSnapshots}
-                  disabled={busy}
-                  onChange={(e) => setShowSnapshots(e.target.checked)}
-                />
-                Snapshots
-              </label>
-            </div>
-
-            {accounts && (!active || adding) && (
-              <form className="row" onSubmit={addName}>
-                <label className="field grow">
-                  <span>Offline name</span>
-                  <input
-                    className="input px2"
-                    value={newName}
-                    placeholder="3–16 letters, digits or _"
-                    maxLength={16}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                </label>
-                <button className="b3d sm" type="submit" disabled={!newName}>
-                  <span className="edge px2" />
-                  <span className="face px2 secondary">Add</span>
-                </button>
-              </form>
-            )}
-            {nameError && <p className="error">{nameError}</p>}
-            {!accounts?.offlineAllowed && !active && (
-              <p className="muted">Sign in once with a Microsoft account that owns Minecraft to use offline names.</p>
-            )}
-
-            <div className="row play-row">
-              {phase.kind === "busy" ? (
-                <div className="progress px4" role="status" aria-live="polite">
-                  <span className="pix progress-label">{phase.label}</span>
-                  <div className="xp" aria-hidden="true">
-                    {Array.from({ length: SEGMENTS }, (_, i) => (
-                      <span key={i} className={i < filled ? "on" : i === filled ? "on blink" : ""} />
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <button
-                  className={`b3d play ${phase.kind === "running" ? "" : "idle"}`}
-                  disabled={!active || !version || phase.kind === "running"}
-                  onClick={play}
-                >
-                  <span className="edge px4" />
-                  <span className="face px4 pix">
-                    <svg width="16" height="16" viewBox="0 0 8 8" shapeRendering="crispEdges" aria-hidden="true">
-                      <path d="M1 0h2v8H1zM3 1h2v6H3zM5 2h2v4H5zM7 3h1v2H7z" fill="currentColor" />
-                    </svg>
-                    {phase.kind === "running" ? "RUNNING" : "PLAY"}
-                  </span>
-                </button>
-              )}
-            </div>
-            {phase.kind === "failed" && <p className="error">{phase.message}</p>}
-            {loadError && <p className="error">{loadError}</p>}
-          </div>
-        </section>
-
-        <section className="log px4" aria-label="Game log">
-          <div className="log-head">
-            <h2 className="pix">Game log</h2>
-            <span className="muted">{log.length ? `${log.length} lines` : "Appears when the game starts"}</span>
-          </div>
-          <div className="log-body">
-            {log.map((entry) => (
-              <pre key={entry.id} className={`line ${entry.level.toLowerCase()}`}>
-                {entry.message}
-              </pre>
-            ))}
-            <div ref={logEnd} />
-          </div>
-        </section>
-      </main>
+      {dialog?.kind === "new" && (
+        <NewInstanceModal
+          versions={versions}
+          onClose={() => setDialog(null)}
+          onCreate={async (instance) => {
+            const name = await api.createInstance(instance);
+            await refreshInstances();
+            setSelectedName(name);
+            setDialog(null);
+            setScreen("home");
+          }}
+        />
+      )}
+      {dialog?.kind === "edit" && (
+        <EditInstanceModal
+          instance={dialog.instance}
+          onClose={() => setDialog(null)}
+          onSave={async (changes) => {
+            const name = await api.updateInstance(dialog.instance.name, changes);
+            await refreshInstances();
+            if (selectedName === dialog.instance.name) setSelectedName(name);
+            setDialog(null);
+          }}
+        />
+      )}
+      {dialog?.kind === "kill" && (
+        <KillInstanceModal
+          instance={dialog.instance}
+          onClose={() => setDialog(null)}
+          onKill={async () => {
+            await api.killInstance(dialog.instance.name);
+            setDialog(null);
+          }}
+        />
+      )}
+      {dialog?.kind === "delete" && (
+        <DeleteInstanceModal
+          instance={dialog.instance}
+          onClose={() => setDialog(null)}
+          onDelete={async () => {
+            await api.deleteInstance(dialog.instance.name);
+            await refreshInstances();
+            setDialog(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ glint-meta = { path = "crates/glint-meta" }
 glint-java = { path = "crates/glint-java" }
 glint-auth = { path = "crates/glint-auth" }
 glint-launch = { path = "crates/glint-launch" }
+glint-instance = { path = "crates/glint-instance" }
 
 dirs = "6"
 futures-util = "0.3"

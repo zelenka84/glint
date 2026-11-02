@@ -1471,6 +1471,7 @@ version = "0.1.0"
 dependencies = [
  "glint-auth",
  "glint-core",
+ "glint-instance",
  "glint-launch",
  "glint-meta",
  "glint-net",
@@ -1480,6 +1481,16 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tracing",
+]
+
+[[package]]
+name = "glint-instance"
+version = "0.1.0"
+dependencies = [
+ "glint-core",
+ "tempfile",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
