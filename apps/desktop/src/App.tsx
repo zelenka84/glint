@@ -78,7 +78,7 @@ function App() {
   useEffect(() => {
     const unlisten = api.onPlayEvent(({ instance, ...event }) => {
       setSessions((all) => ({ ...all, [instance]: applyEvent(all[instance], event) }));
-      if (event.type === "started" || event.type === "exited" || event.type === "failed") {
+      if (["started", "exited", "failed", "killed"].includes(event.type)) {
         refreshInstances();
       }
     });

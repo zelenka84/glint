@@ -466,12 +466,25 @@ async fn play(
             extra_jvm_args: manifest.java.extra_args.clone(),
         };
         let emit = |event: PlayEvent| {
-            if let PlayEvent::Started { pid: Some(pid) } = &event {
-                state
-                    .pids
-                    .lock()
-                    .expect("pids lock")
-                    .insert(instance.clone(), *pid);
+            match &event {
+                PlayEvent::Started { pid: Some(pid) } => {
+                    state
+                        .pids
+                        .lock()
+                        .expect("pids lock")
+                        .insert(instance.clone(), *pid);
+                }
+                // Clear the running state before the UI hears about the exit, or its
+                // refresh would still see the instance as running.
+                PlayEvent::Exited { .. } => {
+                    state
+                        .running
+                        .lock()
+                        .expect("running lock")
+                        .remove(&instance);
+                    state.pids.lock().expect("pids lock").remove(&instance);
+                }
+                _ => {}
             }
             let _ = app.emit(
                 PLAY_EVENT,
