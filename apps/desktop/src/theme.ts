@@ -76,8 +76,14 @@ function load(): Appearance {
   }
 }
 
+let themingTimer: ReturnType<typeof setTimeout> | undefined;
+
 function apply({ theme, font }: Appearance) {
   const root = document.documentElement;
+  // Cross-fade colours while the new theme lands (see .theming in App.css).
+  root.classList.add("theming");
+  clearTimeout(themingTimer);
+  themingTimer = setTimeout(() => root.classList.remove("theming"), 450);
   for (const [key, value] of Object.entries(themes[theme].vars)) {
     root.style.setProperty(`--${key}`, value);
   }

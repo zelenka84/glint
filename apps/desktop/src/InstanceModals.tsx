@@ -196,7 +196,7 @@ export function NewInstanceModal({
         <CoverPicker value={cover} onChange={setCover} />
 
         <button type="button" className="disclosure" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
-          {advanced ? "▾" : "▸"} Advanced
+          <span className="chevron">▸</span> Advanced
         </button>
         {advanced && (
           <label className="field">

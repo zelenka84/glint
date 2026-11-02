@@ -69,8 +69,8 @@ export function Home(props: Props) {
   return (
     <div className="screen home">
       <section className="hero px4">
-        <div className="scene" dangerouslySetInnerHTML={{ __html: scenes[props.scene] }} />
-        <div className="plaque px4">
+        <div key={props.scene} className="scene" dangerouslySetInnerHTML={{ __html: scenes[props.scene] }} />
+        <div key={selected?.name} className="plaque px4">
           {selected ? (
             <>
               <span className="eyebrow pix">{selected.lastPlayed ? "CONTINUE PLAYING" : "READY TO PLAY"}</span>
@@ -165,7 +165,7 @@ export function Home(props: Props) {
           <button className="log-head" onClick={() => setLogOpen((o) => !o)} aria-expanded={logOpen}>
             <h2 className="pix">Game log</h2>
             <span className="muted small">{log.length ? `${log.length} lines` : "Appears when the game starts"}</span>
-            <span className="chevron">{logOpen ? "▾" : "▸"}</span>
+            <span className="chevron">▸</span>
           </button>
           {logOpen && (
             <div className="log-body">
