@@ -12,7 +12,9 @@ fn entry(uuid: &str) -> Result<keyring::Entry> {
 
 pub fn save_ely(session: &Session) -> Result<()> {
     let secret = serde_json::to_string(session).expect("session serializes");
-    entry(&session.uuid)?.set_password(&secret).map_err(|e| Error::Keychain(e.to_string()))
+    entry(&session.uuid)?
+        .set_password(&secret)
+        .map_err(|e| Error::Keychain(e.to_string()))
 }
 
 /// The stored session, or `None` when there is none (signed out or never signed in).

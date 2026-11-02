@@ -16,12 +16,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt().with_env_filter("warn").init();
     let mut args = std::env::args().skip(1);
     let requested = args.next().filter(|v| !v.is_empty());
-    let name = args.next().filter(|n| !n.is_empty()).unwrap_or_else(|| "Player".into());
+    let name = args
+        .next()
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "Player".into());
 
     let paths = GlintPaths::from_system()?;
     paths.ensure()?;
     let http = glint_net::http_client();
-    let meta = MetaClient::new(http.clone(), MetaLayout::new(paths.meta()), Endpoints::default());
+    let meta = MetaClient::new(
+        http.clone(),
+        MetaLayout::new(paths.meta()),
+        Endpoints::default(),
+    );
     let version_id = match requested {
         Some(id) => id,
         None => meta.manifest().await?.latest.release,
@@ -31,7 +38,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let loader = match args.next().filter(|l| !l.is_empty()) {
         None => None,
         Some(spec) => {
-            let (kind, version) = spec.split_once(':').map_or((spec.as_str(), None), |(k, v)| (k, Some(v.to_owned())));
+            let (kind, version) = spec
+                .split_once(':')
+                .map_or((spec.as_str(), None), |(k, v)| (k, Some(v.to_owned())));
             let kind = match kind {
                 "fabric" => LoaderKind::Fabric,
                 "quilt" => LoaderKind::Quilt,
@@ -43,7 +52,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some(v) => v,
                 None => {
                     let builds = glint_loader::loader_versions(&http, kind, &version_id).await?;
-                    builds.iter().find(|b| b.recommended).unwrap_or(&builds[0]).id.clone()
+                    builds
+                        .iter()
+                        .find(|b| b.recommended)
+                        .unwrap_or(&builds[0])
+                        .id
+                        .clone()
                 }
             };
             println!("loader: {kind:?} {version}");
@@ -55,21 +69,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut accounts = AccountStore::load(&accounts_path)?;
     let account = match accounts.accounts().iter().find(|a| a.name() == name) {
         Some(existing) => existing.clone(),
-        None => accounts.add_offline(&name, OfflinePolicy::Unrestricted)?.clone(),
+        None => accounts
+            .add_offline(&name, OfflinePolicy::Unrestricted)?
+            .clone(),
     };
     accounts.save(&accounts_path)?;
 
     let request = PlayRequest {
-        instance_name: match &loader { Some(l) => format!("dev-{version_id}-{:?}", l.kind).to_lowercase(), None => format!("dev-{version_id}") },
+        instance_name: match &loader {
+            Some(l) => format!("dev-{version_id}-{:?}", l.kind).to_lowercase(),
+            None => format!("dev-{version_id}"),
+        },
         version_id,
         identity: account.identity(None),
         max_memory_mb: 4096,
         loader,
         extra_jvm_args: Vec::new(),
+        min_memory_mb: None,
+        java_path: None,
+        game: Default::default(),
+        quick_play: None,
+        hooks: Default::default(),
+        env: Vec::new(),
     };
     play(&paths, &meta, http, request, |event| match event {
-        PlayEvent::Downloading { what, done_files, total_files, done_bytes, total_bytes } => {
-            print!("\r{what:?}: {done_files}/{total_files} files, {:.1}/{:.1} MB   ", done_bytes as f64 / 1e6, total_bytes as f64 / 1e6);
+        PlayEvent::Downloading {
+            what,
+            done_files,
+            total_files,
+            done_bytes,
+            total_bytes,
+        } => {
+            print!(
+                "\r{what:?}: {done_files}/{total_files} files, {:.1}/{:.1} MB   ",
+                done_bytes as f64 / 1e6,
+                total_bytes as f64 / 1e6
+            );
             let _ = std::io::stdout().flush();
             if done_files == total_files {
                 println!();

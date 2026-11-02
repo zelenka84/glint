@@ -1,0 +1,20 @@
+[package]
+name = "glint-gamedir"
+description = "What lives in an instance's game folder: worlds, servers, screenshots, logs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fastnbt.workspace = true
+flate2.workspace = true
+hickory-resolver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "time", "io-util"] }
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

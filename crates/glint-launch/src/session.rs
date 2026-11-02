@@ -1,5 +1,6 @@
 //! The whole "Play" flow: resolve, download, install Java, prepare and launch.
 
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use glint_auth::LaunchIdentity;
@@ -21,20 +22,56 @@ pub struct PlayRequest {
     /// Fabric, Quilt, Forge or NeoForge build to run the game with.
     pub loader: Option<glint_core::Loader>,
     pub extra_jvm_args: Vec<String>,
+    pub min_memory_mb: Option<u32>,
+    /// Java executable to use instead of the Mojang runtime.
+    pub java_path: Option<PathBuf>,
+    /// Window size and fullscreen; the auto-join fields are read by the caller.
+    pub game: glint_core::GameSettings,
+    pub quick_play: Option<QuickPlay>,
+    pub hooks: glint_core::LaunchHooks,
+    pub env: Vec<(String, String)>,
+}
+
+/// Where the game goes straight after starting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuickPlay {
+    Server(String),
+    World(String),
 }
 
 /// Progress of a play request, in the order it happens. Serialized for the UI.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum PlayEvent {
-    Resolving { version: String },
-    Downloading { what: Download, done_files: usize, total_files: usize, done_bytes: u64, total_bytes: u64 },
+    Resolving {
+        version: String,
+    },
+    Downloading {
+        what: Download,
+        done_files: usize,
+        total_files: usize,
+        done_bytes: u64,
+        total_bytes: u64,
+    },
     /// Installing a mod loader; Forge and NeoForge patch the game here, which takes a while.
-    InstallingLoader { name: String },
+    InstallingLoader {
+        name: String,
+    },
     Preparing,
-    Started { pid: Option<u32> },
-    Log { level: String, message: String },
-    Exited { code: Option<i32> },
+    Started {
+        pid: Option<u32>,
+    },
+    Log {
+        level: String,
+        message: String,
+    },
+    Exited {
+        code: Option<i32>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -58,6 +95,10 @@ pub enum PlayError {
     Launch(#[from] crate::Error),
     #[error(transparent)]
     Loader(#[from] glint_loader::Error),
+    #[error("Java was not found at {0}")]
+    JavaMissing(PathBuf),
+    #[error("the pre-launch command failed ({0}); the game was not started")]
+    PreLaunch(String),
 }
 
 /// Runs a version from nothing to an exited game, reporting every step to `emit`.
@@ -70,7 +111,9 @@ pub async fn play(
     emit: impl Fn(PlayEvent),
 ) -> Result<(), PlayError> {
     let platform = Platform::current();
-    emit(PlayEvent::Resolving { version: request.version_id.clone() });
+    emit(PlayEvent::Resolving {
+        version: request.version_id.clone(),
+    });
 
     let manifest = meta.manifest().await?;
     let entry = manifest
@@ -80,21 +123,42 @@ pub async fn play(
     let index = meta.asset_index(&vanilla).await?;
     let mut plan = meta.plan(&vanilla, index.as_ref(), &platform);
 
-    meta.install(&plan, throttled(Download::Game, &emit)).await?;
-
-    let component = vanilla.java_version.as_ref().map_or(LEGACY_COMPONENT, |j| j.component.as_str());
-    let java = JavaRuntimes::new(http.clone(), paths.java(), DEFAULT_INDEX_URL)
-        .ensure(component, &platform, throttled(Download::Java, &emit))
+    meta.install(&plan, throttled(Download::Game, &emit))
         .await?;
+
+    let java = match &request.java_path {
+        Some(path) if path.is_file() => path.clone(),
+        Some(path) => return Err(PlayError::JavaMissing(path.clone())),
+        None => {
+            let component = vanilla
+                .java_version
+                .as_ref()
+                .map_or(LEGACY_COMPONENT, |j| j.component.as_str());
+            JavaRuntimes::new(http.clone(), paths.java(), DEFAULT_INDEX_URL)
+                .ensure(component, &platform, throttled(Download::Java, &emit))
+                .await?
+        }
+    };
 
     // Loaders build on the installed vanilla files, then add their own libraries.
     let version = match &request.loader {
         Some(loader) => {
-            emit(PlayEvent::InstallingLoader { name: glint_loader::display_name(loader.kind).to_owned() });
-            let version =
-                glint_loader::install(&http, meta, &vanilla, loader.kind, &loader.version, &java, &platform).await?;
+            emit(PlayEvent::InstallingLoader {
+                name: glint_loader::display_name(loader.kind).to_owned(),
+            });
+            let version = glint_loader::install(
+                &http,
+                meta,
+                &vanilla,
+                loader.kind,
+                &loader.version,
+                &java,
+                &platform,
+            )
+            .await?;
             plan = meta.plan(&version, index.as_ref(), &platform);
-            meta.install(&plan, throttled(Download::Game, &emit)).await?;
+            meta.install(&plan, throttled(Download::Game, &emit))
+                .await?;
             version
         }
         None => vanilla,
@@ -104,14 +168,29 @@ pub async fn play(
     let mut extra_jvm_args = request.extra_jvm_args.clone();
     if let Some(target) = &request.identity.auth_server {
         let downloader = glint_net::Downloader::new(http.clone(), 2);
-        let jar = injector::ensure(&http, &downloader, &paths.meta().join("authlib-injector"), injector::LATEST_URL).await?;
+        let jar = injector::ensure(
+            &http,
+            &downloader,
+            &paths.meta().join("authlib-injector"),
+            injector::LATEST_URL,
+        )
+        .await?;
         extra_jvm_args.push(injector::javaagent_arg(&jar, target));
     }
     let instance = paths.instance(&request.instance_name)?;
     let game_dir = instance.join("game");
     let natives_dir = instance.join("natives");
-    let game_assets = prepare(meta.layout(), &version, &plan, index.as_ref(), &natives_dir, &game_dir).await?;
+    let game_assets = prepare(
+        meta.layout(),
+        &version,
+        &plan,
+        index.as_ref(),
+        &natives_dir,
+        &game_dir,
+    )
+    .await?;
 
+    let game_settings = &request.game;
     let options = LaunchOptions {
         java,
         game_dir,
@@ -119,12 +198,64 @@ pub async fn play(
         game_assets,
         identity: request.identity,
         max_memory_mb: request.max_memory_mb,
+        min_memory_mb: request.min_memory_mb,
         extra_jvm_args,
-        resolution: None,
-        quick_play_server: None,
+        resolution: game_settings.width.zip(game_settings.height),
+        fullscreen: game_settings.fullscreen,
+        quick_play_server: match &request.quick_play {
+            Some(QuickPlay::Server(s)) => Some(s.clone()),
+            _ => None,
+        },
+        quick_play_world: match &request.quick_play {
+            Some(QuickPlay::World(w)) => Some(w.clone()),
+            _ => None,
+        },
         launcher_version: env!("CARGO_PKG_VERSION").into(),
     };
-    let command = build_command(meta.layout(), &version, &plan, &options, &platform);
+    let mut command = build_command(meta.layout(), &version, &plan, &options, &platform);
+    command.env = request.env.clone();
+
+    let hook_env = {
+        let mut env = request.env.clone();
+        env.extend([
+            ("INST_NAME".into(), request.instance_name.clone()),
+            ("INST_ID".into(), request.instance_name.clone()),
+            ("INST_DIR".into(), instance.display().to_string()),
+            ("INST_MC_DIR".into(), options.game_dir.display().to_string()),
+            ("INST_JAVA".into(), options.java.display().to_string()),
+            ("INST_JAVA_ARGS".into(), command.args.join(" ")),
+        ]);
+        env
+    };
+    if let Some(pre) = request
+        .hooks
+        .pre_launch
+        .as_deref()
+        .filter(|c| !c.trim().is_empty())
+    {
+        let code = run_hook("pre-launch", pre, &hook_env, &instance, &emit).await;
+        if code != Some(0) {
+            return Err(PlayError::PreLaunch(
+                code.map_or("could not run".into(), |c| format!("exit code {c}")),
+            ));
+        }
+    }
+    if let Some(wrapper) = request
+        .hooks
+        .wrapper
+        .as_deref()
+        .filter(|c| !c.trim().is_empty())
+    {
+        let mut parts = wrapper.split_whitespace().map(str::to_owned);
+        if let Some(program) = parts.next() {
+            let mut args: Vec<String> = parts.collect();
+            args.push(command.program.display().to_string());
+            args.append(&mut command.args);
+            command.program = program.into();
+            command.args = args;
+        }
+    }
+
     let game = spawn(&command)?;
     emit(PlayEvent::Started { pid: game.id() });
 
@@ -132,12 +263,77 @@ pub async fn play(
     let status = game
         .wait(|line| {
             if let Some(entry) = parser.push(&line) {
-                emit(PlayEvent::Log { level: entry.level, message: entry.message });
+                emit(PlayEvent::Log {
+                    level: entry.level,
+                    message: entry.message,
+                });
             }
         })
         .await?;
-    emit(PlayEvent::Exited { code: status.code() });
+    if let Some(post) = request
+        .hooks
+        .post_exit
+        .as_deref()
+        .filter(|c| !c.trim().is_empty())
+    {
+        run_hook("post-exit", post, &hook_env, &instance, &emit).await;
+    }
+    emit(PlayEvent::Exited {
+        code: status.code(),
+    });
     Ok(())
+}
+
+/// Runs a player-supplied shell command, streaming its output into the game log.
+/// Returns its exit code, or `None` when it could not be started.
+async fn run_hook(
+    label: &str,
+    command: &str,
+    env: &[(String, String)],
+    cwd: &Path,
+    emit: &impl Fn(PlayEvent),
+) -> Option<i32> {
+    emit(PlayEvent::Log {
+        level: "INFO".into(),
+        message: format!("[{label}] {command}"),
+    });
+    let mut cmd = if cfg!(windows) {
+        let mut c = tokio::process::Command::new("cmd");
+        c.arg("/C").arg(command);
+        c
+    } else {
+        let mut c = tokio::process::Command::new("sh");
+        c.arg("-c").arg(command);
+        c
+    };
+    cmd.envs(env.iter().map(|(k, v)| (k, v)))
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    match cmd.output().await {
+        Ok(output) => {
+            for (bytes, level) in [(&output.stdout, "INFO"), (&output.stderr, "WARN")] {
+                for line in String::from_utf8_lossy(bytes)
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                {
+                    emit(PlayEvent::Log {
+                        level: level.into(),
+                        message: format!("[{label}] {line}"),
+                    });
+                }
+            }
+            output.status.code()
+        }
+        Err(e) => {
+            emit(PlayEvent::Log {
+                level: "ERROR".into(),
+                message: format!("[{label}] could not run: {e}"),
+            });
+            None
+        }
+    }
 }
 
 /// Reports download progress at most ~10 times a second, plus the final update.

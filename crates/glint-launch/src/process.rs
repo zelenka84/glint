@@ -29,6 +29,7 @@ pub struct GameProcess {
 pub fn spawn(command: &LaunchCommand) -> Result<GameProcess> {
     let mut cmd = Command::new(&command.program);
     cmd.args(&command.args)
+        .envs(command.env.iter().map(|(k, v)| (k, v)))
         .current_dir(&command.cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -40,7 +41,10 @@ pub fn spawn(command: &LaunchCommand) -> Result<GameProcess> {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
-    let mut child = cmd.spawn().map_err(|source| Error::Spawn { path: command.program.clone(), source })?;
+    let mut child = cmd.spawn().map_err(|source| Error::Spawn {
+        path: command.program.clone(),
+        source,
+    })?;
     let (tx, lines) = mpsc::unbounded_channel();
     if let Some(out) = child.stdout.take() {
         forward(out, LogStream::Stdout, tx.clone());
@@ -51,7 +55,11 @@ pub fn spawn(command: &LaunchCommand) -> Result<GameProcess> {
     Ok(GameProcess { child, lines })
 }
 
-fn forward(reader: impl AsyncRead + Unpin + Send + 'static, stream: LogStream, tx: mpsc::UnboundedSender<LogLine>) {
+fn forward(
+    reader: impl AsyncRead + Unpin + Send + 'static,
+    stream: LogStream,
+    tx: mpsc::UnboundedSender<LogLine>,
+) {
     tokio::spawn(async move {
         let mut lines = BufReader::new(reader).lines();
         while let Ok(Some(text)) = lines.next_line().await {
@@ -72,10 +80,16 @@ impl GameProcess {
         while let Some(line) = self.lines.recv().await {
             on_line(line);
         }
-        self.child.wait().await.map_err(|source| Error::Io { path: "game process".into(), source })
+        self.child.wait().await.map_err(|source| Error::Io {
+            path: "game process".into(),
+            source,
+        })
     }
 
     pub async fn kill(&mut self) -> Result<()> {
-        self.child.kill().await.map_err(|source| Error::Io { path: "game process".into(), source })
+        self.child.kill().await.map_err(|source| Error::Io {
+            path: "game process".into(),
+            source,
+        })
     }
 }

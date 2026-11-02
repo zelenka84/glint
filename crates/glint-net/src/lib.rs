@@ -23,7 +23,11 @@ pub enum Error {
     Status { url: String, status: u16 },
 
     #[error("hash mismatch for {url}: expected {expected}, got {actual}")]
-    HashMismatch { url: String, expected: String, actual: String },
+    HashMismatch {
+        url: String,
+        expected: String,
+        actual: String,
+    },
 
     #[error("I/O error at {path}: {source}")]
     Io {

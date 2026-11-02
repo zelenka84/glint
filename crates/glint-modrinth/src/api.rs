@@ -5,7 +5,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result, Target, modrinth_loaders};
+use crate::{ContentKind, Error, Result, Target, modrinth_loaders};
 
 pub const DEFAULT_BASE: &str = "https://api.modrinth.com/v2";
 
@@ -69,6 +69,8 @@ pub struct Hit {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Version {
     pub id: String,
+    #[serde(default)]
+    pub project_id: String,
     pub name: String,
     pub version_number: String,
     #[serde(default)]
@@ -101,19 +103,24 @@ pub struct Dependency {
 
 impl Version {
     pub fn primary_file(&self) -> Option<&VersionFile> {
-        self.files.iter().find(|f| f.primary).or_else(|| self.files.first())
+        self.files
+            .iter()
+            .find(|f| f.primary)
+            .or_else(|| self.files.first())
     }
 }
 
-#[derive(Deserialize)]
-struct Project {
-    title: String,
+#[derive(Debug, Clone, Deserialize)]
+pub struct Project {
+    pub title: String,
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }
 
 pub struct ModrinthApi {
     http: reqwest::Client,
     base: String,
-    titles: Mutex<HashMap<String, String>>,
+    projects: Mutex<HashMap<String, Project>>,
 }
 
 impl ModrinthApi {
@@ -122,21 +129,55 @@ impl ModrinthApi {
     }
 
     pub fn with_base(http: reqwest::Client, base: impl Into<String>) -> Self {
-        Self { http, base: base.into(), titles: Mutex::new(HashMap::new()) }
+        Self {
+            http,
+            base: base.into(),
+            projects: Mutex::new(HashMap::new()),
+        }
     }
 
     async fn get<T: serde::de::DeserializeOwned>(&self, path_and_query: &str) -> Result<T> {
         let url = format!("{}{}", self.base, path_and_query);
-        let response = self
-            .http
-            .get(&url)
+        let request = self.http.get(&url);
+        self.send(url, request).await
+    }
+
+    async fn post<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<T> {
+        let url = format!("{}{}", self.base, path);
+        let request = self.http.post(&url).json(body);
+        self.send(url, request).await
+    }
+
+    async fn send<T: serde::de::DeserializeOwned>(
+        &self,
+        url: String,
+        request: reqwest::RequestBuilder,
+    ) -> Result<T> {
+        let response = request
             .send()
             .await
-            .map_err(|source| glint_net::Error::Http { url: url.clone(), source })?;
+            .map_err(|source| glint_net::Error::Http {
+                url: url.clone(),
+                source,
+            })?;
         if !response.status().is_success() {
-            return Err(glint_net::Error::Status { url, status: response.status().as_u16() }.into());
+            return Err(glint_net::Error::Status {
+                url,
+                status: response.status().as_u16(),
+            }
+            .into());
         }
-        let text = response.text().await.map_err(|source| glint_net::Error::Http { url: url.clone(), source })?;
+        let text = response
+            .text()
+            .await
+            .map_err(|source| glint_net::Error::Http {
+                url: url.clone(),
+                source,
+            })?;
         serde_json::from_str(&text).map_err(|source| Error::Json { url, source })
     }
 
@@ -144,15 +185,26 @@ impl ModrinthApi {
         let mut facets = vec![vec![format!("project_type:{}", query.project_type.facet())]];
         if let Some(target) = &query.target {
             facets.push(vec![format!("versions:{}", target.game_version)]);
-            if matches!(query.project_type, ProjectType::Mod | ProjectType::Modpack) {
-                facets.push(modrinth_loaders(target.loader).iter().map(|l| format!("categories:{l}")).collect());
+            if let (ProjectType::Mod | ProjectType::Modpack, Some(loader)) =
+                (query.project_type, target.loader)
+            {
+                facets.push(
+                    modrinth_loaders(loader)
+                        .iter()
+                        .map(|l| format!("categories:{l}"))
+                        .collect(),
+                );
             }
         }
         if let Some(category) = &query.category {
             facets.push(vec![format!("categories:{category}")]);
         }
         let facets = serde_json::to_string(&facets).expect("facets serialize");
-        let index = if query.text.trim().is_empty() { "downloads" } else { "relevance" };
+        let index = if query.text.trim().is_empty() {
+            "downloads"
+        } else {
+            "relevance"
+        };
         let path = format!(
             "/search?query={}&facets={}&index={index}&offset={}&limit={}",
             encode(query.text.trim()),
@@ -167,36 +219,77 @@ impl ModrinthApi {
         self.get(&format!("/version/{}", encode(version_id))).await
     }
 
-    /// The newest release compatible with `target`, falling back to betas when there is no release.
-    pub async fn best_version(&self, project_id: &str, target: &Target) -> Result<Version> {
-        let loaders = serde_json::to_string(modrinth_loaders(target.loader)).expect("loaders serialize");
+    /// The newest release of `project_id` (an id or slug) compatible with `target`,
+    /// falling back to betas when there is no release.
+    pub async fn best_version(
+        &self,
+        project_id: &str,
+        target: &Target,
+        kind: ContentKind,
+    ) -> Result<Version> {
         let games = serde_json::to_string(&[&target.game_version]).expect("versions serialize");
-        let versions: Vec<Version> = self
-            .get(&format!(
-                "/project/{}/version?loaders={}&game_versions={}",
-                encode(project_id),
-                encode(&loaders),
-                encode(&games)
-            ))
-            .await?;
+        let mut path = format!(
+            "/project/{}/version?game_versions={}",
+            encode(project_id),
+            encode(&games)
+        );
+        if let Some(loaders) = kind.loaders(target) {
+            let loaders = serde_json::to_string(&loaders).expect("loaders serialize");
+            path.push_str(&format!("&loaders={}", encode(&loaders)));
+        }
+        let versions: Vec<Version> = self.get(&path).await?;
         let release = versions.iter().position(|v| v.version_type == "release");
         let index = release.or(if versions.is_empty() { None } else { Some(0) });
-        index
-            .map(|i| versions[i].clone())
-            .ok_or_else(|| Error::NoCompatibleVersion(self.cached_title(project_id).unwrap_or_else(|| project_id.to_owned())))
+        index.map(|i| versions[i].clone()).ok_or_else(|| {
+            Error::NoCompatibleVersion(
+                self.cached_title(project_id)
+                    .unwrap_or_else(|| project_id.to_owned()),
+            )
+        })
     }
 
-    pub async fn project_title(&self, project_id: &str) -> Result<String> {
-        if let Some(title) = self.cached_title(project_id) {
-            return Ok(title);
+    /// Newest compatible versions for installed files, keyed by their SHA-512.
+    pub async fn latest_for_hashes(
+        &self,
+        hashes: &[String],
+        target: &Target,
+        kind: ContentKind,
+    ) -> Result<HashMap<String, Version>> {
+        if hashes.is_empty() {
+            return Ok(HashMap::new());
         }
-        let project: Project = self.get(&format!("/project/{}", encode(project_id))).await?;
-        self.titles.lock().expect("titles lock").insert(project_id.to_owned(), project.title.clone());
-        Ok(project.title)
+        let mut body = serde_json::json!({
+            "hashes": hashes,
+            "algorithm": "sha512",
+            "game_versions": [target.game_version],
+        });
+        if let Some(loaders) = kind.loaders(target) {
+            body["loaders"] = serde_json::json!(loaders);
+        }
+        self.post("/version_files/update", &body).await
+    }
+
+    /// Title and icon of a project, cached for the session.
+    pub async fn project(&self, project_id: &str) -> Result<Project> {
+        if let Some(project) = self.projects.lock().expect("projects lock").get(project_id) {
+            return Ok(project.clone());
+        }
+        let project: Project = self
+            .get(&format!("/project/{}", encode(project_id)))
+            .await?;
+        self.projects
+            .lock()
+            .expect("projects lock")
+            .insert(project_id.to_owned(), project.clone());
+        Ok(project)
     }
 
     fn cached_title(&self, project_id: &str) -> Option<String> {
-        self.titles.lock().expect("titles lock").get(project_id).cloned()
+        self.projects
+            .lock()
+            .expect("projects lock")
+            .get(project_id)
+            .map(|p| p.title.clone())
     }
 }
 
@@ -205,7 +298,9 @@ fn encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
             _ => out.push_str(&format!("%{byte:02X}")),
         }
     }
@@ -219,7 +314,10 @@ mod tests {
     #[test]
     fn encodes_query_values() {
         assert_eq!(encode("sodium extra"), "sodium%20extra");
-        assert_eq!(encode(r#"[["versions:1.21.4"]]"#), "%5B%5B%22versions%3A1.21.4%22%5D%5D");
+        assert_eq!(
+            encode(r#"[["versions:1.21.4"]]"#),
+            "%5B%5B%22versions%3A1.21.4%22%5D%5D"
+        );
         assert_eq!(encode("кот"), "%D0%BA%D0%BE%D1%82");
     }
 }

@@ -59,7 +59,11 @@ impl Downloader {
             return Ok(DownloadOutcome::AlreadyPresent);
         }
 
-        let _permit = self.permits.acquire().await.expect("semaphore is never closed");
+        let _permit = self
+            .permits
+            .acquire()
+            .await
+            .expect("semaphore is never closed");
 
         let mut attempt = 1;
         loop {
@@ -75,20 +79,35 @@ impl Downloader {
         }
     }
 
-    async fn fetch_once(&self, url: &str, dest: &Path, expected: Option<&ExpectedHash>) -> Result<()> {
-        let http = |source| Error::Http { url: url.to_owned(), source };
+    async fn fetch_once(
+        &self,
+        url: &str,
+        dest: &Path,
+        expected: Option<&ExpectedHash>,
+    ) -> Result<()> {
+        let http = |source| Error::Http {
+            url: url.to_owned(),
+            source,
+        };
 
         let response = self.client.get(url).send().await.map_err(http)?;
         let status = response.status();
         if !status.is_success() {
-            return Err(Error::Status { url: url.to_owned(), status: status.as_u16() });
+            return Err(Error::Status {
+                url: url.to_owned(),
+                status: status.as_u16(),
+            });
         }
 
         if let Some(parent) = dest.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| io(parent, e))?;
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| io(parent, e))?;
         }
         let part = part_path(dest);
-        let mut file = tokio::fs::File::create(&part).await.map_err(|e| io(&part, e))?;
+        let mut file = tokio::fs::File::create(&part)
+            .await
+            .map_err(|e| io(&part, e))?;
         let mut hasher = expected.map(ExpectedHash::hasher);
 
         let mut body = response.bytes_stream();
@@ -121,7 +140,9 @@ impl Downloader {
             }
         }
 
-        tokio::fs::rename(&part, dest).await.map_err(|e| io(dest, e))
+        tokio::fs::rename(&part, dest)
+            .await
+            .map_err(|e| io(dest, e))
     }
 }
 
@@ -140,7 +161,10 @@ fn part_path(dest: &Path) -> PathBuf {
 }
 
 fn io(path: &Path, source: std::io::Error) -> Error {
-    Error::Io { path: path.to_owned(), source }
+    Error::Io {
+        path: path.to_owned(),
+        source,
+    }
 }
 
 #[cfg(test)]
@@ -170,13 +194,19 @@ mod tests {
         let url = format!("{}/hello.txt", server.uri());
         let hash = ExpectedHash::Sha1(HELLO_SHA1.into());
 
-        let outcome = downloader().download(&url, &dest, Some(&hash)).await.unwrap();
+        let outcome = downloader()
+            .download(&url, &dest, Some(&hash))
+            .await
+            .unwrap();
         assert_eq!(outcome, DownloadOutcome::Downloaded);
         assert_eq!(std::fs::read(&dest).unwrap(), b"hello");
         assert!(!part_path(&dest).exists());
 
         // Second call finds the verified file and makes no request (expect(1) above).
-        let outcome = downloader().download(&url, &dest, Some(&hash)).await.unwrap();
+        let outcome = downloader()
+            .download(&url, &dest, Some(&hash))
+            .await
+            .unwrap();
         assert_eq!(outcome, DownloadOutcome::AlreadyPresent);
     }
 
@@ -191,7 +221,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("hello.txt");
         let err = downloader()
-            .download(&server.uri(), &dest, Some(&ExpectedHash::Sha1(HELLO_SHA1.into())))
+            .download(
+                &server.uri(),
+                &dest,
+                Some(&ExpectedHash::Sha1(HELLO_SHA1.into())),
+            )
             .await
             .unwrap_err();
 
@@ -215,7 +249,10 @@ mod tests {
 
         let tmp = tempfile::tempdir().unwrap();
         let dest = tmp.path().join("hello.txt");
-        let outcome = downloader().download(&server.uri(), &dest, None).await.unwrap();
+        let outcome = downloader()
+            .download(&server.uri(), &dest, None)
+            .await
+            .unwrap();
         assert_eq!(outcome, DownloadOutcome::Downloaded);
         assert_eq!(std::fs::read(&dest).unwrap(), b"hello");
     }
@@ -230,7 +267,10 @@ mod tests {
             .await;
 
         let tmp = tempfile::tempdir().unwrap();
-        let err = downloader().download(&server.uri(), &tmp.path().join("x"), None).await.unwrap_err();
+        let err = downloader()
+            .download(&server.uri(), &tmp.path().join("x"), None)
+            .await
+            .unwrap_err();
         assert!(matches!(err, Error::Status { status: 404, .. }), "{err}");
     }
 }

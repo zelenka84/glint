@@ -38,14 +38,23 @@ impl LogParser {
         if text.trim().is_empty() {
             return None;
         }
-        let level = if line.stream == LogStream::Stderr { "ERROR" } else { "INFO" };
-        Some(LogEntry { level: level.into(), message: text.to_owned() })
+        let level = if line.stream == LogStream::Stderr {
+            "ERROR"
+        } else {
+            "INFO"
+        };
+        Some(LogEntry {
+            level: level.into(),
+            message: text.to_owned(),
+        })
     }
 }
 
 fn parse_event(xml: &str) -> LogEntry {
     let level = attribute(xml, "level").unwrap_or("INFO").to_owned();
-    let mut message = element_cdata(xml, "log4j:Message").unwrap_or_default().to_owned();
+    let mut message = element_cdata(xml, "log4j:Message")
+        .unwrap_or_default()
+        .to_owned();
     if let Some(throwable) = element_cdata(xml, "log4j:Throwable") {
         message.push('\n');
         message.push_str(throwable.trim_end());
@@ -74,7 +83,12 @@ mod tests {
     fn feed(parser: &mut LogParser, lines: &[&str]) -> Vec<LogEntry> {
         lines
             .iter()
-            .filter_map(|l| parser.push(&LogLine { stream: LogStream::Stdout, text: (*l).to_owned() }))
+            .filter_map(|l| {
+                parser.push(&LogLine {
+                    stream: LogStream::Stdout,
+                    text: (*l).to_owned(),
+                })
+            })
             .collect()
     }
 
@@ -98,16 +112,36 @@ mod tests {
             ],
         );
         assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0], LogEntry { level: "INFO".into(), message: "Picked up JAVA_TOOL_OPTIONS".into() });
-        assert_eq!(entries[1], LogEntry { level: "INFO".into(), message: "Setting user: Player".into() });
+        assert_eq!(
+            entries[0],
+            LogEntry {
+                level: "INFO".into(),
+                message: "Picked up JAVA_TOOL_OPTIONS".into()
+            }
+        );
+        assert_eq!(
+            entries[1],
+            LogEntry {
+                level: "INFO".into(),
+                message: "Setting user: Player".into()
+            }
+        );
         assert_eq!(entries[2].level, "ERROR");
-        assert_eq!(entries[2].message, "Failed to fetch user properties\njava.lang.Exception: boom\n\tat a.b(C.java:1)");
+        assert_eq!(
+            entries[2].message,
+            "Failed to fetch user properties\njava.lang.Exception: boom\n\tat a.b(C.java:1)"
+        );
     }
 
     #[test]
     fn stderr_lines_are_errors() {
         let mut parser = LogParser::default();
-        let entry = parser.push(&LogLine { stream: LogStream::Stderr, text: "Exception in thread".into() }).unwrap();
+        let entry = parser
+            .push(&LogLine {
+                stream: LogStream::Stderr,
+                text: "Exception in thread".into(),
+            })
+            .unwrap();
         assert_eq!(entry.level, "ERROR");
     }
 }

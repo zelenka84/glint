@@ -20,7 +20,9 @@ pub enum Error {
     #[error("{0:?} is not a valid Minecraft name: use 3–16 letters, digits or _")]
     InvalidName(String),
 
-    #[error("sign in once with a Microsoft account that owns Minecraft to use offline names and Ely.by accounts")]
+    #[error(
+        "sign in once with a Microsoft account that owns Minecraft to use offline names and Ely.by accounts"
+    )]
     OwnershipRequired,
 
     #[error("Ely.by: {0}")]
@@ -68,9 +70,15 @@ pub enum OfflinePolicy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Account {
-    Offline { name: String, uuid: String },
+    Offline {
+        name: String,
+        uuid: String,
+    },
     /// Tokens live in the system credential store, see [`keychain`].
-    Ely { name: String, uuid: String },
+    Ely {
+        name: String,
+        uuid: String,
+    },
 }
 
 impl Account {
@@ -129,8 +137,13 @@ pub struct LaunchIdentity {
 
 /// Minecraft's own rule for player names.
 pub fn validate_name(name: &str) -> Result<()> {
-    let ok = (3..=16).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
-    if ok { Ok(()) } else { Err(Error::InvalidName(name.to_owned())) }
+    let ok = (3..=16).contains(&name.len())
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    if ok {
+        Ok(())
+    } else {
+        Err(Error::InvalidName(name.to_owned()))
+    }
 }
 
 /// The UUID the game itself assigns to an offline player:
@@ -149,7 +162,11 @@ fn new_client_token() -> String {
     let mut bytes = [0u8; 16];
     for chunk in bytes.chunks_mut(8) {
         let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+        h.write_u128(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos()),
+        );
         chunk.copy_from_slice(&h.finish().to_le_bytes());
     }
     hex::encode(bytes)
@@ -174,14 +191,23 @@ pub struct AccountStore {
 impl AccountStore {
     pub fn load(path: &Path) -> Result<Self> {
         match std::fs::read_to_string(path) {
-            Ok(text) => serde_json::from_str(&text).map_err(|source| Error::Json { path: path.to_owned(), source }),
+            Ok(text) => serde_json::from_str(&text).map_err(|source| Error::Json {
+                path: path.to_owned(),
+                source,
+            }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(source) => Err(Error::Io { path: path.to_owned(), source }),
+            Err(source) => Err(Error::Io {
+                path: path.to_owned(),
+                source,
+            }),
         }
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        let io = |source| Error::Io { path: path.to_owned(), source };
+        let io = |source| Error::Io {
+            path: path.to_owned(),
+            source,
+        };
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(io)?;
         }
@@ -222,10 +248,17 @@ impl AccountStore {
             return Err(Error::OwnershipRequired);
         }
         validate_name(name)?;
-        if self.accounts.iter().any(|a| a.name().eq_ignore_ascii_case(name)) {
+        if self
+            .accounts
+            .iter()
+            .any(|a| a.name().eq_ignore_ascii_case(name))
+        {
             return Err(Error::Duplicate(name.to_owned()));
         }
-        let account = Account::Offline { name: name.to_owned(), uuid: offline_uuid(name) };
+        let account = Account::Offline {
+            name: name.to_owned(),
+            uuid: offline_uuid(name),
+        };
         if self.active.is_none() {
             self.active = Some(account.uuid().to_owned());
         }
@@ -238,7 +271,10 @@ impl AccountStore {
         if policy == OfflinePolicy::RequireOwnership && !self.ownership_verified {
             return Err(Error::OwnershipRequired);
         }
-        let account = Account::Ely { name: name.to_owned(), uuid: uuid.to_owned() };
+        let account = Account::Ely {
+            name: name.to_owned(),
+            uuid: uuid.to_owned(),
+        };
         let index = match self.accounts.iter().position(|a| a.uuid() == uuid) {
             Some(i) => {
                 self.accounts[i] = account;
@@ -255,7 +291,9 @@ impl AccountStore {
 
     /// This install's client token, created on first use. Save the store afterwards.
     pub fn client_token(&mut self) -> String {
-        self.client_token.get_or_insert_with(new_client_token).clone()
+        self.client_token
+            .get_or_insert_with(new_client_token)
+            .clone()
     }
 
     pub fn remove(&mut self, uuid: &str) {
@@ -282,7 +320,14 @@ mod tests {
         for ok in ["abc", "Player_1", "ABCDEFGHIJKLMNOP"] {
             assert!(validate_name(ok).is_ok(), "{ok}");
         }
-        for bad in ["ab", "ABCDEFGHIJKLMNOPQ", "with space", "кириллица", "dash-name", ""] {
+        for bad in [
+            "ab",
+            "ABCDEFGHIJKLMNOPQ",
+            "with space",
+            "кириллица",
+            "dash-name",
+            "",
+        ] {
             assert!(validate_name(bad).is_err(), "{bad}");
         }
     }
@@ -296,7 +341,10 @@ mod tests {
         ));
 
         store.mark_ownership_verified();
-        let account = store.add_offline("Player", OfflinePolicy::RequireOwnership).unwrap().clone();
+        let account = store
+            .add_offline("Player", OfflinePolicy::RequireOwnership)
+            .unwrap()
+            .clone();
         assert_eq!(store.active(), Some(&account));
         assert!(matches!(
             store.add_offline("player", OfflinePolicy::RequireOwnership),
@@ -307,15 +355,25 @@ mod tests {
     #[test]
     fn ely_accounts_follow_the_same_rule_and_replace_by_uuid() {
         let mut store = AccountStore::default();
-        assert!(matches!(store.add_ely("Steve", "u1", OfflinePolicy::RequireOwnership), Err(Error::OwnershipRequired)));
+        assert!(matches!(
+            store.add_ely("Steve", "u1", OfflinePolicy::RequireOwnership),
+            Err(Error::OwnershipRequired)
+        ));
 
-        store.add_ely("Steve", "u1", OfflinePolicy::Unrestricted).unwrap();
-        store.add_ely("Steve2", "u1", OfflinePolicy::Unrestricted).unwrap();
+        store
+            .add_ely("Steve", "u1", OfflinePolicy::Unrestricted)
+            .unwrap();
+        store
+            .add_ely("Steve2", "u1", OfflinePolicy::Unrestricted)
+            .unwrap();
         assert_eq!(store.accounts().len(), 1);
         let account = store.active().unwrap();
         assert_eq!(account.name(), "Steve2");
         let identity = account.identity(Some("token"));
-        assert_eq!((identity.access_token.as_str(), identity.user_type.as_str()), ("token", "mojang"));
+        assert_eq!(
+            (identity.access_token.as_str(), identity.user_type.as_str()),
+            ("token", "mojang")
+        );
         assert_eq!(identity.auth_server.as_deref(), Some("ely.by"));
     }
 
@@ -331,7 +389,11 @@ mod tests {
     #[test]
     fn development_policy_skips_the_ownership_check() {
         let mut store = AccountStore::default();
-        assert!(store.add_offline("DevPlayer", OfflinePolicy::Unrestricted).is_ok());
+        assert!(
+            store
+                .add_offline("DevPlayer", OfflinePolicy::Unrestricted)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -341,8 +403,16 @@ mod tests {
 
         let mut store = AccountStore::load(&path).unwrap();
         store.mark_ownership_verified();
-        let a = store.add_offline("Alpha", OfflinePolicy::RequireOwnership).unwrap().uuid().to_owned();
-        let b = store.add_offline("Beta", OfflinePolicy::RequireOwnership).unwrap().uuid().to_owned();
+        let a = store
+            .add_offline("Alpha", OfflinePolicy::RequireOwnership)
+            .unwrap()
+            .uuid()
+            .to_owned();
+        let b = store
+            .add_offline("Beta", OfflinePolicy::RequireOwnership)
+            .unwrap()
+            .uuid()
+            .to_owned();
         assert!(store.set_active(&b));
         store.remove(&b);
         assert_eq!(store.active().map(Account::uuid), Some(a.as_str()));

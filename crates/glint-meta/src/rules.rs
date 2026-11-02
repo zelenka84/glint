@@ -84,7 +84,12 @@ pub struct Platform {
 
 impl Platform {
     pub fn new(os: Os, arch: Arch) -> Self {
-        Self { os, arch, os_version: String::new(), features: BTreeSet::new() }
+        Self {
+            os,
+            arch,
+            os_version: String::new(),
+            features: BTreeSet::new(),
+        }
     }
 
     /// The platform Glint is running on.
@@ -104,8 +109,17 @@ impl Platform {
             Arch::X86_64
         };
         // Windows 10 and 11 both report 10.0; the only rule that reads this targets Windows 10+.
-        let os_version = if os == Os::Windows { "10.0".to_owned() } else { String::new() };
-        Self { os, arch, os_version, features: BTreeSet::new() }
+        let os_version = if os == Os::Windows {
+            "10.0".to_owned()
+        } else {
+            String::new()
+        };
+        Self {
+            os,
+            arch,
+            os_version,
+            features: BTreeSet::new(),
+        }
     }
 
     pub fn with_feature(mut self, feature: &str) -> Self {
@@ -117,14 +131,23 @@ impl Platform {
 impl Rule {
     fn matches(&self, platform: &Platform) -> bool {
         if let Some(os) = &self.os {
-            if os.name.as_deref().is_some_and(|n| n != platform.os.mojang_name()) {
+            if os
+                .name
+                .as_deref()
+                .is_some_and(|n| n != platform.os.mojang_name())
+            {
                 return false;
             }
-            if os.arch.as_deref().is_some_and(|a| a != platform.arch.mojang_name()) {
+            if os
+                .arch
+                .as_deref()
+                .is_some_and(|a| a != platform.arch.mojang_name())
+            {
                 return false;
             }
             if let Some(pattern) = &os.version {
-                let ok = regex::Regex::new(pattern).is_ok_and(|re| re.is_match(&platform.os_version));
+                let ok =
+                    regex::Regex::new(pattern).is_ok_and(|re| re.is_match(&platform.os_version));
                 if !ok {
                     return false;
                 }
@@ -180,8 +203,14 @@ mod tests {
     #[test]
     fn os_version_regex() {
         let r = rules(r#"[{"action": "allow", "os": {"name": "windows", "version": "^10\\."}}]"#);
-        assert!(rules_allow(&r, &Platform::current_like(Os::Windows, "10.0")));
-        assert!(!rules_allow(&r, &Platform::current_like(Os::Windows, "6.1")));
+        assert!(rules_allow(
+            &r,
+            &Platform::current_like(Os::Windows, "10.0")
+        ));
+        assert!(!rules_allow(
+            &r,
+            &Platform::current_like(Os::Windows, "6.1")
+        ));
     }
 
     #[test]
@@ -194,7 +223,10 @@ mod tests {
 
     impl Platform {
         fn current_like(os: Os, version: &str) -> Self {
-            Self { os_version: version.to_owned(), ..Self::new(os, Arch::X86_64) }
+            Self {
+                os_version: version.to_owned(),
+                ..Self::new(os, Arch::X86_64)
+            }
         }
     }
 }

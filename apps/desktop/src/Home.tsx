@@ -16,11 +16,12 @@ type Props = {
   onCreate: () => void;
   onOpenFolder: (name: string) => void;
   onEdit: (instance: Instance) => void;
+  onManage: (instance: Instance) => void;
   onLibrary: () => void;
   onAccount: (uuid: string) => void;
 };
 
-function PlayControl({ instance, session, canPlay, onPlay, onKill }: {
+export function PlayControl({ instance, session, canPlay, onPlay, onKill }: {
   instance: Instance;
   session: Session | undefined;
   canPlay: boolean;
@@ -92,7 +93,7 @@ export function Home(props: Props) {
                 <B3D size="lg" label="Open instance folder" className="square" onClick={() => props.onOpenFolder(selected.name)}>
                   <Icon name="folder" size={20} />
                 </B3D>
-                <B3D size="lg" label="Edit instance" className="square" onClick={() => props.onEdit(selected)}>
+                <B3D size="lg" label="Manage instance" className="square" onClick={() => props.onManage(selected)}>
                   <Icon name="edit" size={20} />
                 </B3D>
                 {accounts && accounts.accounts.length > 0 && (

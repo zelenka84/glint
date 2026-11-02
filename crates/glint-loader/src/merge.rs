@@ -21,12 +21,22 @@ fn library_key(name: &str) -> String {
 /// class wins. The id stays the vanilla one so the client jar keeps its name,
 /// which Forge's module scanning relies on (`${version_name}.jar`).
 pub fn merge(vanilla: &VersionInfo, loader: &VersionInfo) -> VersionInfo {
-    let overridden: HashSet<String> = loader.libraries.iter().map(|l| library_key(&l.name)).collect();
+    let overridden: HashSet<String> = loader
+        .libraries
+        .iter()
+        .map(|l| library_key(&l.name))
+        .collect();
     let libraries: Vec<Library> = loader
         .libraries
         .iter()
         .cloned()
-        .chain(vanilla.libraries.iter().filter(|l| !overridden.contains(&library_key(&l.name))).cloned())
+        .chain(
+            vanilla
+                .libraries
+                .iter()
+                .filter(|l| !overridden.contains(&library_key(&l.name)))
+                .cloned(),
+        )
         .collect();
 
     let arguments = match (&vanilla.arguments, &loader.arguments) {
@@ -46,8 +56,14 @@ pub fn merge(vanilla: &VersionInfo, loader: &VersionInfo) -> VersionInfo {
         downloads: vanilla.downloads.clone(),
         libraries,
         arguments,
-        minecraft_arguments: loader.minecraft_arguments.clone().or_else(|| vanilla.minecraft_arguments.clone()),
-        java_version: loader.java_version.clone().or_else(|| vanilla.java_version.clone()),
+        minecraft_arguments: loader
+            .minecraft_arguments
+            .clone()
+            .or_else(|| vanilla.minecraft_arguments.clone()),
+        java_version: loader
+            .java_version
+            .clone()
+            .or_else(|| vanilla.java_version.clone()),
         logging: vanilla.logging.clone(),
         inherits_from: None,
     }
@@ -81,10 +97,18 @@ mod tests {
         let names: Vec<_> = merged.libraries.iter().map(|l| l.name.as_str()).collect();
         assert_eq!(
             names,
-            ["org.ow2.asm:asm:9.7.1", "net.fabricmc:fabric-loader:0.16.9", "com.mojang:brigadier:1.3.10", "org.lwjgl:lwjgl:3.3.3:natives-windows"]
+            [
+                "org.ow2.asm:asm:9.7.1",
+                "net.fabricmc:fabric-loader:0.16.9",
+                "com.mojang:brigadier:1.3.10",
+                "org.lwjgl:lwjgl:3.3.3:natives-windows"
+            ]
         );
         assert_eq!(merged.id, "1.21.4");
-        assert_eq!(merged.main_class, "net.fabricmc.loader.impl.launch.knot.KnotClient");
+        assert_eq!(
+            merged.main_class,
+            "net.fabricmc.loader.impl.launch.knot.KnotClient"
+        );
         assert_eq!(merged.java_version.unwrap().major_version, 21);
         let jvm = merged.arguments.unwrap().jvm;
         assert!(matches!(jvm.last(), Some(Argument::Plain(s)) if s.starts_with("-DFabricMcEmu")));
@@ -93,8 +117,14 @@ mod tests {
 
     #[test]
     fn classifiers_are_separate_libraries() {
-        assert_ne!(library_key("org.lwjgl:lwjgl:3.3.3"), library_key("org.lwjgl:lwjgl:3.3.3:natives-windows"));
-        assert_eq!(library_key("org.lwjgl:lwjgl:3.3.3"), library_key("org.lwjgl:lwjgl:3.3.4"));
+        assert_ne!(
+            library_key("org.lwjgl:lwjgl:3.3.3"),
+            library_key("org.lwjgl:lwjgl:3.3.3:natives-windows")
+        );
+        assert_eq!(
+            library_key("org.lwjgl:lwjgl:3.3.3"),
+            library_key("org.lwjgl:lwjgl:3.3.4")
+        );
         assert_eq!(library_key("a:b:1@zip"), "a:b");
     }
 }

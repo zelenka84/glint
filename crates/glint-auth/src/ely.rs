@@ -56,12 +56,21 @@ impl ElyClient {
 
     /// Points at another server; used by tests.
     pub fn with_base(http: reqwest::Client, base: impl Into<String>) -> Self {
-        Self { http, base: base.into().trim_end_matches('/').to_owned() }
+        Self {
+            http,
+            base: base.into().trim_end_matches('/').to_owned(),
+        }
     }
 
     /// Signs in with a nickname or email. Pass the code from the authenticator app as
     /// `totp` when the first attempt returns [`Error::TwoFactorRequired`].
-    pub async fn authenticate(&self, login: &str, password: &str, totp: Option<&str>, client_token: &str) -> Result<Session> {
+    pub async fn authenticate(
+        &self,
+        login: &str,
+        password: &str,
+        totp: Option<&str>,
+        client_token: &str,
+    ) -> Result<Session> {
         let password = match totp.map(str::trim).filter(|c| !c.is_empty()) {
             Some(code) => format!("{password}:{code}"),
             None => password.to_owned(),
@@ -85,7 +94,10 @@ impl ElyClient {
         });
         match self.session("/auth/refresh", body).await {
             Err(Error::Rejected(_)) => Err(Error::SessionExpired),
-            other => other.map(|s| Session { uuid: session.uuid.clone(), ..s }),
+            other => other.map(|s| Session {
+                uuid: session.uuid.clone(),
+                ..s
+            }),
         }
     }
 
@@ -103,7 +115,11 @@ impl ElyClient {
 
     /// A valid session: the given one if still accepted, otherwise a refreshed one.
     pub async fn ensure_valid(&self, session: Session) -> Result<Session> {
-        if self.validate(&session).await? { Ok(session) } else { self.refresh(&session).await }
+        if self.validate(&session).await? {
+            Ok(session)
+        } else {
+            self.refresh(&session).await
+        }
     }
 
     /// Ends the session on the server. Failures are ignored by callers removing an account.
@@ -126,7 +142,10 @@ impl ElyClient {
             .await
             .map_err(|e| Error::Network(e.to_string()))?;
         let status = response.status();
-        let text = response.text().await.map_err(|e| Error::Network(e.to_string()))?;
+        let text = response
+            .text()
+            .await
+            .map_err(|e| Error::Network(e.to_string()))?;
 
         if !status.is_success() {
             let parsed: Option<ErrorResponse> = serde_json::from_str(&text).ok();
@@ -140,9 +159,11 @@ impl ElyClient {
             return Err(Error::Rejected(message));
         }
 
-        let auth: AuthResponse =
-            serde_json::from_str(&text).map_err(|e| Error::Network(format!("unexpected Ely.by response: {e}")))?;
-        let profile = auth.selected_profile.ok_or_else(|| Error::Rejected("this account has no Minecraft profile".into()))?;
+        let auth: AuthResponse = serde_json::from_str(&text)
+            .map_err(|e| Error::Network(format!("unexpected Ely.by response: {e}")))?;
+        let profile = auth
+            .selected_profile
+            .ok_or_else(|| Error::Rejected("this account has no Minecraft profile".into()))?;
         Ok(Session {
             access_token: auth.access_token,
             client_token: auth.client_token,
@@ -171,15 +192,23 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/auth/authenticate"))
-            .and(body_partial_json(json!({"username": "erick@ely.by", "password": "secret", "clientToken": "client"})))
+            .and(body_partial_json(
+                json!({"username": "erick@ely.by", "password": "secret", "clientToken": "client"}),
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(ok_body("t1")))
             .mount(&server)
             .await;
 
         let ely = ElyClient::with_base(reqwest::Client::new(), server.uri());
-        let session = ely.authenticate(" erick@ely.by ", "secret", None, "client").await.unwrap();
+        let session = ely
+            .authenticate(" erick@ely.by ", "secret", None, "client")
+            .await
+            .unwrap();
         assert_eq!(session.uuid, "ffc8fdc95824509e8a57c99b940fb996");
-        assert_eq!((session.name.as_str(), session.access_token.as_str()), ("ErickSkrauch", "t1"));
+        assert_eq!(
+            (session.name.as_str(), session.access_token.as_str()),
+            ("ErickSkrauch", "t1")
+        );
     }
 
     #[tokio::test]
@@ -205,16 +234,35 @@ mod tests {
             .await;
 
         let ely = ElyClient::with_base(reqwest::Client::new(), server.uri());
-        assert!(matches!(ely.authenticate("erick", "secret", None, "c").await, Err(Error::TwoFactorRequired)));
-        assert_eq!(ely.authenticate("erick", "secret", Some("123456"), "c").await.unwrap().access_token, "t2");
-        let err = ely.authenticate("erick", "wrong", None, "c").await.unwrap_err();
-        assert!(matches!(&err, Error::Rejected(m) if m.contains("Invalid credentials")), "{err}");
+        assert!(matches!(
+            ely.authenticate("erick", "secret", None, "c").await,
+            Err(Error::TwoFactorRequired)
+        ));
+        assert_eq!(
+            ely.authenticate("erick", "secret", Some("123456"), "c")
+                .await
+                .unwrap()
+                .access_token,
+            "t2"
+        );
+        let err = ely
+            .authenticate("erick", "wrong", None, "c")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Rejected(m) if m.contains("Invalid credentials")),
+            "{err}"
+        );
     }
 
     #[tokio::test]
     async fn ensure_valid_refreshes_rejected_tokens_and_reports_expiry() {
         let server = MockServer::start().await;
-        Mock::given(method("POST")).and(path("/auth/validate")).respond_with(ResponseTemplate::new(401)).mount(&server).await;
+        Mock::given(method("POST"))
+            .and(path("/auth/validate"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
         Mock::given(method("POST"))
             .and(path("/auth/refresh"))
             .and(body_partial_json(json!({"accessToken": "old"})))
@@ -223,15 +271,31 @@ mod tests {
             .await;
         Mock::given(method("POST"))
             .and(path("/auth/refresh"))
-            .respond_with(ResponseTemplate::new(401).set_body_json(json!({"error": "ForbiddenOperationException", "errorMessage": "Token expired."})))
+            .respond_with(ResponseTemplate::new(401).set_body_json(
+                json!({"error": "ForbiddenOperationException", "errorMessage": "Token expired."}),
+            ))
             .mount(&server)
             .await;
 
         let ely = ElyClient::with_base(reqwest::Client::new(), server.uri());
-        let old = Session { access_token: "old".into(), client_token: "client".into(), uuid: "u".into(), name: "n".into() };
-        assert_eq!(ely.ensure_valid(old.clone()).await.unwrap().access_token, "new");
+        let old = Session {
+            access_token: "old".into(),
+            client_token: "client".into(),
+            uuid: "u".into(),
+            name: "n".into(),
+        };
+        assert_eq!(
+            ely.ensure_valid(old.clone()).await.unwrap().access_token,
+            "new"
+        );
 
-        let dead = Session { access_token: "dead".into(), ..old };
-        assert!(matches!(ely.ensure_valid(dead).await, Err(Error::SessionExpired)));
+        let dead = Session {
+            access_token: "dead".into(),
+            ..old
+        };
+        assert!(matches!(
+            ely.ensure_valid(dead).await,
+            Err(Error::SessionExpired)
+        ));
     }
 }

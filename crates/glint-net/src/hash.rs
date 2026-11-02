@@ -94,6 +94,12 @@ mod tests {
     #[tokio::test]
     async fn missing_file_does_not_match() {
         let tmp = tempfile::tempdir().unwrap();
-        assert!(!file_matches(&tmp.path().join("nope"), &ExpectedHash::Sha1(HELLO_SHA1.into())).await);
+        assert!(
+            !file_matches(
+                &tmp.path().join("nope"),
+                &ExpectedHash::Sha1(HELLO_SHA1.into())
+            )
+            .await
+        );
     }
 }

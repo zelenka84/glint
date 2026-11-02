@@ -29,7 +29,11 @@ pub enum Error {
     Meta(#[from] glint_meta::Error),
 
     #[error("{loader} has no build {version} for Minecraft {game}")]
-    UnknownVersion { loader: &'static str, version: String, game: String },
+    UnknownVersion {
+        loader: &'static str,
+        version: String,
+        game: String,
+    },
 
     #[error("{0}")]
     Unsupported(String),
@@ -56,11 +60,18 @@ pub enum Error {
     },
 
     #[error("installer step {step} failed ({status}): {output}")]
-    Processor { step: String, status: String, output: String },
+    Processor {
+        step: String,
+        status: String,
+        output: String,
+    },
 }
 
 pub(crate) fn io(path: &Path, source: std::io::Error) -> Error {
-    Error::Io { path: path.to_owned(), source }
+    Error::Io {
+        path: path.to_owned(),
+        source,
+    }
 }
 
 pub fn display_name(kind: LoaderKind) -> &'static str {
@@ -112,25 +123,52 @@ async fn fetch_profile(
         LoaderKind::Fabric => ("https://meta.fabricmc.net/v2", "fabric"),
         _ => ("https://meta.quiltmc.org/v3", "quilt"),
     };
-    let cache = loaders_dir(meta).join(name).join(format!("{game}-{loader}.json"));
+    let cache = loaders_dir(meta)
+        .join(name)
+        .join(format!("{game}-{loader}.json"));
     let text = match tokio::fs::read_to_string(&cache).await {
         Ok(text) => text,
         Err(_) => {
             let url = format!("{base}/versions/loader/{game}/{loader}/profile/json");
-            let response = http.get(&url).send().await.map_err(|source| glint_net::Error::Http { url: url.clone(), source })?;
+            let response =
+                http.get(&url)
+                    .send()
+                    .await
+                    .map_err(|source| glint_net::Error::Http {
+                        url: url.clone(),
+                        source,
+                    })?;
             if response.status().as_u16() == 400 || response.status().as_u16() == 404 {
-                return Err(Error::UnknownVersion { loader: display_name(kind), version: loader.into(), game: game.into() });
+                return Err(Error::UnknownVersion {
+                    loader: display_name(kind),
+                    version: loader.into(),
+                    game: game.into(),
+                });
             }
             if !response.status().is_success() {
-                return Err(glint_net::Error::Status { url, status: response.status().as_u16() }.into());
+                return Err(glint_net::Error::Status {
+                    url,
+                    status: response.status().as_u16(),
+                }
+                .into());
             }
-            let text = response.text().await.map_err(|source| glint_net::Error::Http { url, source })?;
+            let text = response
+                .text()
+                .await
+                .map_err(|source| glint_net::Error::Http { url, source })?;
             if let Some(parent) = cache.parent() {
-                tokio::fs::create_dir_all(parent).await.map_err(|e| io(parent, e))?;
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| io(parent, e))?;
             }
-            tokio::fs::write(&cache, &text).await.map_err(|e| io(&cache, e))?;
+            tokio::fs::write(&cache, &text)
+                .await
+                .map_err(|e| io(&cache, e))?;
             text
         }
     };
-    serde_json::from_str(&text).map_err(|source| Error::Json { what: format!("{name} profile"), source })
+    serde_json::from_str(&text).map_err(|source| Error::Json {
+        what: format!("{name} profile"),
+        source,
+    })
 }

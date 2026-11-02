@@ -5,7 +5,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result, io};
+use crate::{ContentKind, Error, Result, io};
 
 pub const LOCK_FILE: &str = "glint.lock";
 
@@ -24,6 +24,9 @@ pub enum ModSource {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LockedMod {
     pub source: ModSource,
+    /// Mod, resource pack or shader pack; older locks only had mods.
+    #[serde(default)]
+    pub kind: ContentKind,
     pub project_id: String,
     pub version_id: String,
     pub version_number: String,
@@ -31,6 +34,8 @@ pub struct LockedMod {
     pub filename: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha512: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
     /// Installed because another mod requires it.
     #[serde(default)]
     pub dependency: bool,
@@ -45,14 +50,20 @@ fn enabled_default() -> bool {
 impl Lock {
     pub fn load(path: &Path) -> Result<Self> {
         match std::fs::read_to_string(path) {
-            Ok(text) => toml::from_str(&text).map_err(|e| Error::Lock { path: path.to_owned(), message: e.to_string() }),
+            Ok(text) => toml::from_str(&text).map_err(|e| Error::Lock {
+                path: path.to_owned(),
+                message: e.to_string(),
+            }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(io(path, e)),
         }
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
-        let text = toml::to_string_pretty(self).map_err(|e| Error::Lock { path: path.to_owned(), message: e.to_string() })?;
+        let text = toml::to_string_pretty(self).map_err(|e| Error::Lock {
+            path: path.to_owned(),
+            message: e.to_string(),
+        })?;
         let tmp = path.with_extension("lock.tmp");
         std::fs::write(&tmp, text).map_err(|e| io(&tmp, e))?;
         std::fs::rename(&tmp, path).map_err(|e| io(path, e))
@@ -80,19 +91,24 @@ mod tests {
         let lock = Lock {
             mods: vec![LockedMod {
                 source: ModSource::Modrinth,
+                kind: ContentKind::Mod,
                 project_id: "AANobbMI".into(),
                 version_id: "c3YkZvne".into(),
                 version_number: "mc1.21.4-0.6.13-fabric".into(),
                 title: "Sodium".into(),
                 filename: "sodium-fabric-0.6.13+mc1.21.4.jar".into(),
                 sha512: None,
+                icon_url: None,
                 dependency: false,
                 enabled: true,
             }],
         };
         lock.save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("[[mods]]") && text.contains("source = \"modrinth\""), "{text}");
+        assert!(
+            text.contains("[[mods]]") && text.contains("source = \"modrinth\""),
+            "{text}"
+        );
         assert_eq!(Lock::load(&path).unwrap(), lock);
     }
 }

@@ -51,7 +51,12 @@ const INSTALL_CONCURRENCY: usize = 12;
 impl MetaClient {
     pub fn new(http: reqwest::Client, layout: MetaLayout, endpoints: Endpoints) -> Self {
         let downloader = Downloader::new(http.clone(), INSTALL_CONCURRENCY);
-        Self { http, downloader, layout, endpoints }
+        Self {
+            http,
+            downloader,
+            layout,
+            endpoints,
+        }
     }
 
     pub fn layout(&self) -> &MetaLayout {
@@ -81,7 +86,11 @@ impl MetaClient {
     pub async fn version(&self, entry: &ManifestEntry) -> Result<VersionInfo> {
         let dest = self.layout.version_json(&entry.id);
         self.downloader
-            .download(&entry.url, &dest, Some(&ExpectedHash::Sha1(entry.sha1.clone())))
+            .download(
+                &entry.url,
+                &dest,
+                Some(&ExpectedHash::Sha1(entry.sha1.clone())),
+            )
             .await?;
         read_json(&dest).await
     }
@@ -93,13 +102,28 @@ impl MetaClient {
         };
         let dest = self.layout.asset_index(&index.id);
         self.downloader
-            .download(&index.url, &dest, Some(&ExpectedHash::Sha1(index.sha1.clone())))
+            .download(
+                &index.url,
+                &dest,
+                Some(&ExpectedHash::Sha1(index.sha1.clone())),
+            )
             .await?;
         read_json(&dest).await.map(Some)
     }
 
-    pub fn plan(&self, version: &VersionInfo, index: Option<&AssetIndex>, platform: &Platform) -> InstallPlan {
-        plan_install(&self.layout, version, index, platform, &self.endpoints.resources)
+    pub fn plan(
+        &self,
+        version: &VersionInfo,
+        index: Option<&AssetIndex>,
+        platform: &Platform,
+    ) -> InstallPlan {
+        plan_install(
+            &self.layout,
+            version,
+            index,
+            platform,
+            &self.endpoints.resources,
+        )
     }
 
     /// Downloads every file in `plan`, skipping ones already present and verified.
@@ -113,7 +137,9 @@ impl MetaClient {
         let done_bytes_ref = &done_bytes;
         let mut results = stream::iter(plan.files.iter().cloned())
             .map(move |file| async move {
-                downloader.download(&file.url, &file.dest, file.hash.as_ref()).await?;
+                downloader
+                    .download(&file.url, &file.dest, file.hash.as_ref())
+                    .await?;
                 done_bytes_ref.fetch_add(file.size.unwrap_or(0), Ordering::Relaxed);
                 Ok::<_, Error>(())
             })
@@ -134,29 +160,46 @@ impl MetaClient {
     }
 
     async fn fetch_text(&self, url: &str) -> Result<String> {
-        let http_err = |source| Error::Net(glint_net::Error::Http { url: url.to_owned(), source });
+        let http_err = |source| {
+            Error::Net(glint_net::Error::Http {
+                url: url.to_owned(),
+                source,
+            })
+        };
         let response = self.http.get(url).send().await.map_err(http_err)?;
         let status = response.status();
         if !status.is_success() {
-            return Err(Error::Net(glint_net::Error::Status { url: url.to_owned(), status: status.as_u16() }));
+            return Err(Error::Net(glint_net::Error::Status {
+                url: url.to_owned(),
+                status: status.as_u16(),
+            }));
         }
         response.text().await.map_err(http_err)
     }
 }
 
 fn parse<T: DeserializeOwned>(text: &str, path: &Path) -> Result<T> {
-    serde_json::from_str(text).map_err(|source| Error::Json { path: path.to_owned(), source })
+    serde_json::from_str(text).map_err(|source| Error::Json {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 async fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let text = tokio::fs::read_to_string(path)
         .await
-        .map_err(|source| Error::Io { path: path.to_owned(), source })?;
+        .map_err(|source| Error::Io {
+            path: path.to_owned(),
+            source,
+        })?;
     parse(&text, path)
 }
 
 async fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    let io = |source| Error::Io { path: path.to_owned(), source };
+    let io = |source| Error::Io {
+        path: path.to_owned(),
+        source,
+    };
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(io)?;
     }

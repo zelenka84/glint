@@ -43,16 +43,67 @@ export type ModHit = {
   categories: string[];
 };
 export type SearchResults = { hits: ModHit[]; totalHits: number };
+export type ContentKind = "mod" | "resourcepack" | "shader";
 export type InstalledMod = {
   filename: string;
   title: string;
   version: string | null;
   projectId: string | null;
+  iconUrl: string | null;
   enabled: boolean;
   dependency: boolean;
   managed: boolean;
+  size: number;
 };
+export type ContentUpdate = { projectId: string; filename: string; title: string; current: string; latest: string };
 export type InstanceChanges = { name?: string; maxMemoryMb?: number; cover?: string };
+
+export type World = {
+  folder: string;
+  name: string;
+  gameMode: string;
+  hardcore: boolean;
+  cheats: boolean;
+  lastPlayed: number | null;
+  version: string | null;
+  seed: number | null;
+  size: number;
+  icon: string | null;
+};
+export type ServerResources = "prompt" | "enabled" | "disabled";
+export type Server = { name: string; address: string; icon: string | null; resources: ServerResources };
+export type MotdSpan = { text: string; color: string | null; bold: boolean; italic: boolean };
+export type ServerStatus = {
+  version: string;
+  protocol: number;
+  online: number;
+  max: number;
+  sample: string[];
+  motd: MotdSpan[];
+  favicon: string | null;
+  latencyMs: number;
+};
+export type Screenshot = { name: string; path: string; size: number; taken: number };
+export type InstanceSettings = {
+  name: string;
+  cover: string | null;
+  maxMemoryMb: number;
+  minMemoryMb: number | null;
+  jvmArgs: string;
+  javaPath: string | null;
+  width: number | null;
+  height: number | null;
+  fullscreen: boolean;
+  autoJoinServer: string | null;
+  autoJoinWorld: string | null;
+  preLaunch: string | null;
+  wrapper: string | null;
+  postExit: string | null;
+  env: [string, string][];
+};
+export type JavaInstall = { path: string; version: string | null; source: string };
+export type LogFile = { id: string; name: string; kind: "log" | "crash"; size: number; modified: number };
+export type PlayTarget = { world?: string; server?: string };
 
 export type AppInfo = { version: string; dataDir: string; devBuild: boolean };
 
@@ -98,15 +149,55 @@ export const api = {
   loaderVersions: (kind: LoaderKind, gameVersion: string) =>
     invoke<LoaderVersion[]>("loader_versions", { kind, gameVersion }),
 
-  searchMods: (instance: string | null, query: string, offset = 0, projectType: ProjectType = "mod") =>
-    invoke<SearchResults>("search_mods", { instance, query, offset, projectType }),
-  installMod: (instance: string, projectId: string) => invoke<string[]>("install_mod", { instance, projectId }),
-  installedMods: (instance: string) => invoke<InstalledMod[]>("installed_mods", { instance }),
-  removeMod: (instance: string, filename: string) => invoke<void>("remove_mod", { instance, filename }),
-  setModEnabled: (instance: string, filename: string, enabled: boolean) =>
-    invoke<void>("set_mod_enabled", { instance, filename, enabled }),
+  searchContent: (instance: string | null, kind: ContentKind, query: string, offset = 0) =>
+    invoke<SearchResults>("search_content", { instance, kind, query, offset }),
+  installContent: (instance: string, kind: ContentKind, projectId: string) =>
+    invoke<string[]>("install_content", { instance, kind, projectId }),
+  updateContent: (instance: string, kind: ContentKind, projectId: string) =>
+    invoke<string[]>("update_content", { instance, kind, projectId }),
+  contentUpdates: (instance: string, kind: ContentKind) => invoke<ContentUpdate[]>("content_updates", { instance, kind }),
+  installedContent: (instance: string, kind: ContentKind) =>
+    invoke<InstalledMod[]>("installed_content", { instance, kind }),
+  addContentFiles: (instance: string, kind: ContentKind, paths: string[]) =>
+    invoke<string[]>("add_content_files", { instance, kind, paths }),
+  removeContent: (instance: string, kind: ContentKind, filename: string) =>
+    invoke<void>("remove_content", { instance, kind, filename }),
+  setContentEnabled: (instance: string, kind: ContentKind, filename: string, enabled: boolean) =>
+    invoke<void>("set_content_enabled", { instance, kind, filename, enabled }),
+  openContentFolder: (instance: string, kind: ContentKind) => invoke<void>("open_content_folder", { instance, kind }),
 
-  play: (instance: string, account?: string) => invoke<void>("play", { instance, account }),
+  listWorlds: (instance: string) => invoke<World[]>("list_worlds", { instance }),
+  renameWorld: (instance: string, folder: string, name: string) => invoke<void>("rename_world", { instance, folder, name }),
+  duplicateWorld: (instance: string, folder: string) => invoke<string>("duplicate_world", { instance, folder }),
+  backupWorld: (instance: string, folder: string) => invoke<string>("backup_world", { instance, folder }),
+  deleteWorld: (instance: string, folder: string) => invoke<void>("delete_world", { instance, folder }),
+  openWorldFolder: (instance: string, folder?: string) => invoke<void>("open_world_folder", { instance, folder: folder ?? null }),
+  revealPath: (path: string) => invoke<void>("reveal_path", { path }),
+  listServers: (instance: string) => invoke<Server[]>("list_servers", { instance }),
+  saveServers: (instance: string, servers: Server[]) => invoke<void>("save_servers", { instance, servers }),
+  pingServer: (address: string) => invoke<ServerStatus>("ping_server", { address }),
+  listScreenshots: (instance: string) => invoke<Screenshot[]>("list_screenshots", { instance }),
+  renameScreenshot: (instance: string, name: string, newName: string) =>
+    invoke<string>("rename_screenshot", { instance, name, newName }),
+  deleteScreenshot: (instance: string, name: string) => invoke<void>("delete_screenshot", { instance, name }),
+  openScreenshot: (instance: string, name: string) => invoke<void>("open_screenshot", { instance, name }),
+  instanceSettings: (name: string) => invoke<InstanceSettings>("instance_settings", { name }),
+  saveInstanceSettings: (name: string, settings: InstanceSettings) =>
+    invoke<string>("save_instance_settings", { name, settings }),
+  detectJava: () => invoke<JavaInstall[]>("detect_java"),
+  checkJava: (path: string) => invoke<string>("check_java", { path }),
+  listLogFiles: (instance: string) => invoke<LogFile[]>("list_log_files", { instance }),
+  readLogFile: (instance: string, id: string) => invoke<string>("read_log_file", { instance, id }),
+  deleteLogFile: (instance: string, id: string) => invoke<void>("delete_log_file", { instance, id }),
+  deleteOldLogs: (instance: string) => invoke<number>("delete_old_logs", { instance }),
+  readNotes: (instance: string) => invoke<string>("read_notes", { instance }),
+  saveNotes: (instance: string, text: string) => invoke<void>("save_notes", { instance, text }),
+  changeVersion: (name: string, gameVersion: string, loader: { kind: LoaderKind; version: string } | null) =>
+    invoke<void>("change_version", { name, gameVersion, loader }),
+  openLibrariesFolder: () => invoke<void>("open_libraries_folder"),
+  openGameFolder: (instance: string, folder: string) => invoke<void>("open_game_subfolder", { instance, folder }),
+
+  play: (instance: string, target?: PlayTarget) => invoke<void>("play", { instance, target: target ?? null }),
   killInstance: (name: string) => invoke<void>("kill_instance", { name }),
   onPlayEvent: (handler: (event: PlayEnvelope) => void): Promise<UnlistenFn> =>
     listen<PlayEnvelope>("play", (e) => handler(e.payload)),

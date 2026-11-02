@@ -15,9 +15,13 @@ glint-java = { path = "crates/glint-java" }
 glint-auth = { path = "crates/glint-auth" }
 glint-launch = { path = "crates/glint-launch" }
 glint-instance = { path = "crates/glint-instance" }
+glint-gamedir = { path = "crates/glint-gamedir" }
 glint-loader = { path = "crates/glint-loader" }
 glint-modrinth = { path = "crates/glint-modrinth" }
 
+fastnbt = "2"
+flate2 = "1"
+hickory-resolver = { version = "0.25", default-features = false, features = ["tokio", "system-config"] }
 dirs = "6"
 futures-util = "0.3"
 hex = "0.4"

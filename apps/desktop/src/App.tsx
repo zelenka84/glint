@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PlayerHead, accountKindLabel } from "./Accounts";
-import { api, type Accounts, type AppInfo, type Instance, type VersionList } from "./api";
+import { api, type Accounts, type AppInfo, type Instance, type PlayTarget, type VersionList } from "./api";
 import { Home } from "./Home";
 import { DeleteInstanceModal, EditInstanceModal, KillInstanceModal, NewInstanceModal } from "./InstanceModals";
+import { InstancePage, type InstanceTab } from "./instance/InstancePage";
 import { Library } from "./Library";
-import { Mods } from "./Mods";
+import { Discover } from "./content/Discover";
 import { SparkleMark, Wordmark } from "./Logo";
 import { applyEvent, type Session } from "./session";
 import { Settings } from "./Settings";
@@ -14,7 +15,7 @@ import { Icon, type IconName } from "./ui";
 import "./fonts";
 import "./App.css";
 
-type Screen = "home" | "library" | "mods" | "settings";
+type Screen = "home" | "library" | "mods" | "settings" | "instance";
 
 type Dialog =
   | { kind: "new" }
@@ -26,7 +27,7 @@ type Dialog =
 const NAV: { id: Screen | "mods" | "friends" | "studio"; label: string; icon: IconName; soon?: boolean }[] = [
   { id: "home", label: "Home", icon: "home" },
   { id: "library", label: "Library", icon: "library" },
-  { id: "mods", label: "Mods", icon: "mods" },
+  { id: "mods", label: "Discover", icon: "search" },
   { id: "friends", label: "Friends", icon: "friends", soon: true },
   { id: "studio", label: "Glint Studio", icon: "studio", soon: true },
 ];
@@ -65,6 +66,7 @@ function App() {
   const [sessions, setSessions] = useState<Record<string, Session>>({});
   const [dialog, setDialog] = useState<Dialog>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [page, setPage] = useState<{ name: string; tab: InstanceTab }>({ name: "", tab: "log" });
 
   const refreshInstances = useCallback(() => api.instances().then(setInstances, (e) => setNotice(String(e))), []);
 
@@ -93,10 +95,10 @@ function App() {
   );
   const canPlay = !!accounts?.active;
 
-  async function play(name: string) {
+  async function play(name: string, target?: PlayTarget) {
     setSelectedName(name);
     try {
-      await api.play(name);
+      await api.play(name, target);
       setSessions((all) => ({ ...all, [name]: { phase: { kind: "busy", label: "Starting", done: 0, total: 1 }, log: [] } }));
     } catch (e) {
       setSessions((all) => ({ ...all, [name]: { phase: { kind: "failed", message: String(e) }, log: all[name]?.log ?? [] } }));
@@ -112,6 +114,13 @@ function App() {
   }
 
   const active = accounts?.accounts.find((a) => a.uuid === accounts.active) ?? null;
+  const pageInstance = instances.find((i) => i.name === page.name) ?? null;
+
+  function openInstance(name: string, tab: InstanceTab = "log") {
+    setSelectedName(name);
+    setPage({ name, tab });
+    setScreen("instance");
+  }
 
   return (
     <div className="app">
@@ -121,7 +130,7 @@ function App() {
           {NAV.map((item) => (
             <button
               key={item.id}
-              className={`nav-item px2 ${screen === item.id ? "active" : ""}`}
+              className={`nav-item px2 ${screen === item.id || (screen === "instance" && item.id === "library") ? "active" : ""}`}
               disabled={item.soon}
               aria-current={screen === item.id ? "page" : undefined}
               onClick={() => !item.soon && setScreen(item.id as Screen)}
@@ -170,13 +179,14 @@ function App() {
               onKill={(instance) => setDialog({ kind: "kill", instance })}
               onCreate={() => setDialog({ kind: "new" })}
               onOpenFolder={openFolder}
-              onEdit={(instance) => setDialog({ kind: "edit", instance })}
+              onEdit={(instance) => openInstance(instance.name, "settings")}
+              onManage={(instance) => openInstance(instance.name)}
               onLibrary={() => setScreen("library")}
               onAccount={async (uuid) => setAccounts(await api.setActiveAccount(uuid))}
             />
           )}
           {screen === "mods" && (
-            <Mods
+            <Discover
               instances={instances}
               selected={selected?.name ?? null}
               onSelect={setSelectedName}
@@ -189,15 +199,37 @@ function App() {
               sessions={sessions}
               canPlay={canPlay}
               onCreate={() => setDialog({ kind: "new" })}
-              onOpen={(name) => {
-                setSelectedName(name);
-                setScreen("home");
-              }}
-              onPlay={play}
+              onOpen={(name) => openInstance(name)}
+              onPlay={(name) => play(name)}
               onOpenFolder={openFolder}
-              onEdit={(instance) => setDialog({ kind: "edit", instance })}
+              onEdit={(instance) => openInstance(instance.name, "settings")}
               onDelete={(instance) => setDialog({ kind: "delete", instance })}
               onKill={(instance) => setDialog({ kind: "kill", instance })}
+            />
+          )}
+          {screen === "instance" && pageInstance && (
+            <InstancePage
+              instance={pageInstance}
+              tab={page.tab}
+              session={sessions[pageInstance.name]}
+              accounts={accounts}
+              onTab={(tab) => setPage((p) => ({ ...p, tab }))}
+              onBack={() => setScreen("library")}
+              onPlay={play}
+              onKill={(instance) => setDialog({ kind: "kill", instance })}
+              onOpenFolder={openFolder}
+              onClearLog={(name) =>
+                setSessions((all) => (all[name] ? { ...all, [name]: { ...all[name], log: [] } } : all))
+              }
+              onChanged={async (newName) => {
+                await refreshInstances();
+                if (newName) {
+                  setPage((p) => ({ ...p, name: newName }));
+                  setSelectedName(newName);
+                }
+              }}
+              onDelete={(instance) => setDialog({ kind: "delete", instance })}
+              versions={versions}
             />
           )}
           {screen === "settings" && (
@@ -258,6 +290,7 @@ function App() {
             await api.deleteInstance(dialog.instance.name);
             await refreshInstances();
             setDialog(null);
+            if (screen === "instance" && page.name === dialog.instance.name) setScreen("library");
           }}
         />
       )}

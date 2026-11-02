@@ -35,7 +35,10 @@ pub enum Error {
 }
 
 fn io(path: &std::path::Path, source: std::io::Error) -> Error {
-    Error::Io { path: path.to_owned(), source }
+    Error::Io {
+        path: path.to_owned(),
+        source,
+    }
 }
 
 /// Instances under Glint's `instances/` folder.
@@ -81,11 +84,15 @@ impl InstanceStore {
                     }
                     instances.push(manifest);
                 }
-                Err(err) => tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable instance"),
+                Err(err) => {
+                    tracing::warn!(dir = %dir.display(), error = %err, "skipping unreadable instance")
+                }
             }
         }
         instances.sort_by(|a, b| {
-            b.last_played.cmp(&a.last_played).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            b.last_played
+                .cmp(&a.last_played)
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
         Ok(instances)
     }
@@ -146,7 +153,11 @@ impl InstanceStore {
 
     pub fn mark_played(&self, name: &str) -> Result<()> {
         let mut manifest = self.get(name)?;
-        manifest.last_played = Some(SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()));
+        manifest.last_played = Some(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+        );
         self.save(&manifest)
     }
 
@@ -156,7 +167,10 @@ impl InstanceStore {
         if !taken(base) {
             return base.to_owned();
         }
-        (2..).map(|i| format!("{base} ({i})")).find(|n| !taken(n)).expect("some name is free")
+        (2..)
+            .map(|i| format!("{base} ({i})"))
+            .find(|n| !taken(n))
+            .expect("some name is free")
     }
 }
 
@@ -174,8 +188,12 @@ mod tests {
     #[test]
     fn create_list_and_get() {
         let (_tmp, store) = store();
-        store.create(&InstanceManifest::vanilla("Survival", "1.21.4")).unwrap();
-        store.create(&InstanceManifest::vanilla("Creative", "26.3")).unwrap();
+        store
+            .create(&InstanceManifest::vanilla("Survival", "1.21.4"))
+            .unwrap();
+        store
+            .create(&InstanceManifest::vanilla("Creative", "26.3"))
+            .unwrap();
         assert!(store.game_dir("Survival").unwrap().is_dir());
 
         let names: Vec<_> = store.list().unwrap().into_iter().map(|m| m.name).collect();
@@ -191,8 +209,12 @@ mod tests {
     #[test]
     fn played_instances_come_first() {
         let (_tmp, store) = store();
-        store.create(&InstanceManifest::vanilla("A", "1.21")).unwrap();
-        store.create(&InstanceManifest::vanilla("B", "1.21")).unwrap();
+        store
+            .create(&InstanceManifest::vanilla("A", "1.21"))
+            .unwrap();
+        store
+            .create(&InstanceManifest::vanilla("B", "1.21"))
+            .unwrap();
         store.mark_played("B").unwrap();
         assert_eq!(store.list().unwrap()[0].name, "B");
     }
@@ -200,19 +222,33 @@ mod tests {
     #[test]
     fn rename_moves_the_folder_and_updates_the_manifest() {
         let (_tmp, store) = store();
-        store.create(&InstanceManifest::vanilla("Old", "1.21")).unwrap();
-        store.create(&InstanceManifest::vanilla("Other", "1.21")).unwrap();
-        assert!(matches!(store.rename("Old", "Other"), Err(Error::Exists(_))));
+        store
+            .create(&InstanceManifest::vanilla("Old", "1.21"))
+            .unwrap();
+        store
+            .create(&InstanceManifest::vanilla("Other", "1.21"))
+            .unwrap();
+        assert!(matches!(
+            store.rename("Old", "Other"),
+            Err(Error::Exists(_))
+        ));
 
         store.rename("Old", "New").unwrap();
         assert!(!store.dir("Old").unwrap().exists());
-        assert_eq!(InstanceManifest::load(&store.dir("New").unwrap()).unwrap().name, "New");
+        assert_eq!(
+            InstanceManifest::load(&store.dir("New").unwrap())
+                .unwrap()
+                .name,
+            "New"
+        );
     }
 
     #[test]
     fn delete_removes_everything() {
         let (_tmp, store) = store();
-        store.create(&InstanceManifest::vanilla("Temp", "1.21")).unwrap();
+        store
+            .create(&InstanceManifest::vanilla("Temp", "1.21"))
+            .unwrap();
         std::fs::write(store.game_dir("Temp").unwrap().join("options.txt"), "x").unwrap();
         store.delete("Temp").unwrap();
         assert!(store.list().unwrap().is_empty());
@@ -223,7 +259,9 @@ mod tests {
     fn folders_without_manifest_are_ignored_and_names_stay_unique() {
         let (tmp, store) = store();
         std::fs::create_dir_all(tmp.path().join("instances/stray")).unwrap();
-        store.create(&InstanceManifest::vanilla("Vanilla 26.3", "26.3")).unwrap();
+        store
+            .create(&InstanceManifest::vanilla("Vanilla 26.3", "26.3"))
+            .unwrap();
         assert_eq!(store.list().unwrap().len(), 1);
         assert_eq!(store.unique_name("Vanilla 26.3"), "Vanilla 26.3 (2)");
         assert_eq!(store.unique_name("Fresh"), "Fresh");

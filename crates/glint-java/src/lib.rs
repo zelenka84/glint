@@ -16,8 +16,7 @@ use serde::{Deserialize, Serialize};
 /// Component used by versions whose JSON predates `javaVersion` (Java 8).
 pub const LEGACY_COMPONENT: &str = "jre-legacy";
 
-pub const DEFAULT_INDEX_URL: &str =
-    "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
+pub const DEFAULT_INDEX_URL: &str = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -135,9 +134,18 @@ pub struct JavaRuntimes {
 
 impl JavaRuntimes {
     /// `root` is Glint's `java/` folder.
-    pub fn new(http: reqwest::Client, root: impl Into<PathBuf>, index_url: impl Into<String>) -> Self {
+    pub fn new(
+        http: reqwest::Client,
+        root: impl Into<PathBuf>,
+        index_url: impl Into<String>,
+    ) -> Self {
         let downloader = Downloader::new(http.clone(), 8);
-        Self { http, downloader, root: root.into(), index_url: index_url.into() }
+        Self {
+            http,
+            downloader,
+            root: root.into(),
+            index_url: index_url.into(),
+        }
     }
 
     /// Makes sure `component` is installed and returns its `java` executable.
@@ -153,11 +161,17 @@ impl JavaRuntimes {
             .get(key)
             .and_then(|c| c.get(component))
             .and_then(|entries| entries.first())
-            .ok_or_else(|| Error::Unsupported { component: component.to_owned(), platform: key.to_owned() })?;
+            .ok_or_else(|| Error::Unsupported {
+                component: component.to_owned(),
+                platform: key.to_owned(),
+            })?;
 
         let dir = self.root.join(component);
         let java = java_executable(&dir, platform.os);
-        let marker = InstalledMarker { manifest_sha1: entry.manifest.sha1.clone(), version: entry.version.name.clone() };
+        let marker = InstalledMarker {
+            manifest_sha1: entry.manifest.sha1.clone(),
+            version: entry.version.name.clone(),
+        };
         if java.is_file() && read_marker(&dir).await.as_ref() == Some(&marker) {
             return Ok(java);
         }
@@ -165,14 +179,20 @@ impl JavaRuntimes {
         tracing::info!(component, version = %entry.version.name, "installing Java runtime");
         let manifest_path = self.root.join(format!("{component}.manifest.json"));
         self.downloader
-            .download(&entry.manifest.url, &manifest_path, Some(&ExpectedHash::Sha1(entry.manifest.sha1.clone())))
+            .download(
+                &entry.manifest.url,
+                &manifest_path,
+                Some(&ExpectedHash::Sha1(entry.manifest.sha1.clone())),
+            )
             .await?;
         let manifest: RuntimeManifest = read_json(&manifest_path).await?;
         self.install_files(&dir, &manifest, on_progress).await?;
 
         let marker_path = dir.join(MARKER_FILE);
         let bytes = serde_json::to_vec(&marker).expect("marker serializes");
-        tokio::fs::write(&marker_path, bytes).await.map_err(|e| io(&marker_path, e))?;
+        tokio::fs::write(&marker_path, bytes)
+            .await
+            .map_err(|e| io(&marker_path, e))?;
         Ok(java)
     }
 
@@ -185,7 +205,9 @@ impl JavaRuntimes {
         for (rel, file) in &manifest.files {
             if matches!(file, RuntimeFile::Directory) {
                 let path = dir.join(rel);
-                tokio::fs::create_dir_all(&path).await.map_err(|e| io(&path, e))?;
+                tokio::fs::create_dir_all(&path)
+                    .await
+                    .map_err(|e| io(&path, e))?;
             }
         }
 
@@ -194,7 +216,10 @@ impl JavaRuntimes {
             .files
             .iter()
             .filter_map(|(rel, f)| match f {
-                RuntimeFile::File { downloads, executable } => Some((
+                RuntimeFile::File {
+                    downloads,
+                    executable,
+                } => Some((
                     dir.join(rel),
                     downloads.raw.url.clone(),
                     downloads.raw.sha1.clone(),
@@ -213,7 +238,9 @@ impl JavaRuntimes {
         let done_bytes_ref = &done_bytes;
         let mut results = stream::iter(files)
             .map(move |(dest, url, sha1, size, executable)| async move {
-                downloader.download(&url, &dest, Some(&ExpectedHash::Sha1(sha1))).await?;
+                downloader
+                    .download(&url, &dest, Some(&ExpectedHash::Sha1(sha1)))
+                    .await?;
                 if executable {
                     make_executable(&dest).await?;
                 }
@@ -244,20 +271,36 @@ impl JavaRuntimes {
         let cache = self.root.join("all.json");
         let fetched = async {
             let response = self.http.get(&self.index_url).send().await;
-            let response = response.map_err(|source| glint_net::Error::Http { url: self.index_url.clone(), source })?;
+            let response = response.map_err(|source| glint_net::Error::Http {
+                url: self.index_url.clone(),
+                source,
+            })?;
             if !response.status().is_success() {
-                return Err(glint_net::Error::Status { url: self.index_url.clone(), status: response.status().as_u16() }.into());
+                return Err(glint_net::Error::Status {
+                    url: self.index_url.clone(),
+                    status: response.status().as_u16(),
+                }
+                .into());
             }
             let text = response.text().await;
-            text.map_err(|source| Error::Net(glint_net::Error::Http { url: self.index_url.clone(), source }))
+            text.map_err(|source| {
+                Error::Net(glint_net::Error::Http {
+                    url: self.index_url.clone(),
+                    source,
+                })
+            })
         }
         .await;
 
         match fetched {
             Ok(text) => {
                 let index = parse(&text, &cache)?;
-                tokio::fs::create_dir_all(&self.root).await.map_err(|e| io(&self.root, e))?;
-                tokio::fs::write(&cache, &text).await.map_err(|e| io(&cache, e))?;
+                tokio::fs::create_dir_all(&self.root)
+                    .await
+                    .map_err(|e| io(&self.root, e))?;
+                tokio::fs::write(&cache, &text)
+                    .await
+                    .map_err(|e| io(&cache, e))?;
                 Ok(index)
             }
             Err(err) => {
@@ -272,28 +315,40 @@ impl JavaRuntimes {
 }
 
 async fn read_marker(dir: &Path) -> Option<InstalledMarker> {
-    let text = tokio::fs::read_to_string(dir.join(MARKER_FILE)).await.ok()?;
+    let text = tokio::fs::read_to_string(dir.join(MARKER_FILE))
+        .await
+        .ok()?;
     serde_json::from_str(&text).ok()
 }
 
 fn parse<T: serde::de::DeserializeOwned>(text: &str, path: &Path) -> Result<T> {
-    serde_json::from_str(text).map_err(|source| Error::Json { path: path.to_owned(), source })
+    serde_json::from_str(text).map_err(|source| Error::Json {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 async fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
-    let text = tokio::fs::read_to_string(path).await.map_err(|e| io(path, e))?;
+    let text = tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| io(path, e))?;
     parse(&text, path)
 }
 
 fn io(path: &Path, source: std::io::Error) -> Error {
-    Error::Io { path: path.to_owned(), source }
+    Error::Io {
+        path: path.to_owned(),
+        source,
+    }
 }
 
 #[cfg(unix)]
 async fn make_executable(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o755);
-    tokio::fs::set_permissions(path, perms).await.map_err(|e| io(path, e))
+    tokio::fs::set_permissions(path, perms)
+        .await
+        .map_err(|e| io(path, e))
 }
 
 #[cfg(not(unix))]
@@ -304,7 +359,9 @@ async fn make_executable(_path: &Path) -> Result<()> {
 #[cfg(unix)]
 async fn link(path: &Path, target: &str) -> Result<()> {
     let _ = tokio::fs::remove_file(path).await;
-    tokio::fs::symlink(target, path).await.map_err(|e| io(path, e))
+    tokio::fs::symlink(target, path)
+        .await
+        .map_err(|e| io(path, e))
 }
 
 // Windows runtimes contain no links; skip rather than require symlink privileges.
@@ -337,9 +394,18 @@ mod tests {
 
     #[test]
     fn platform_keys_match_mojang_names() {
-        assert_eq!(platform_key(&Platform::new(Os::Windows, Arch::X86_64)), "windows-x64");
-        assert_eq!(platform_key(&Platform::new(Os::Linux, Arch::X86_64)), "linux");
-        assert_eq!(platform_key(&Platform::new(Os::MacOs, Arch::Arm64)), "mac-os-arm64");
+        assert_eq!(
+            platform_key(&Platform::new(Os::Windows, Arch::X86_64)),
+            "windows-x64"
+        );
+        assert_eq!(
+            platform_key(&Platform::new(Os::Linux, Arch::X86_64)),
+            "linux"
+        );
+        assert_eq!(
+            platform_key(&Platform::new(Os::MacOs, Arch::Arm64)),
+            "mac-os-arm64"
+        );
     }
 
     #[tokio::test]
@@ -366,18 +432,38 @@ mod tests {
         serve(&server, "/lib", lib, 1).await;
 
         let tmp = tempfile::tempdir().unwrap();
-        let runtimes = JavaRuntimes::new(glint_net::http_client(), tmp.path(), format!("{base}/all.json"));
-        let platform = Platform::new(if cfg!(windows) { Os::Windows } else { Os::Linux }, Arch::X86_64);
+        let runtimes = JavaRuntimes::new(
+            glint_net::http_client(),
+            tmp.path(),
+            format!("{base}/all.json"),
+        );
+        let platform = Platform::new(
+            if cfg!(windows) {
+                Os::Windows
+            } else {
+                Os::Linux
+            },
+            Arch::X86_64,
+        );
 
-        let first = runtimes.ensure("java-runtime-delta", &platform, |_| {}).await.unwrap();
+        let first = runtimes
+            .ensure("java-runtime-delta", &platform, |_| {})
+            .await
+            .unwrap();
         assert!(first.is_file());
         assert!(tmp.path().join("java-runtime-delta/lib/modules").is_file());
 
         // Second call trusts the marker: only the index is fetched again (see `expect` counts).
-        let second = runtimes.ensure("java-runtime-delta", &platform, |_| {}).await.unwrap();
+        let second = runtimes
+            .ensure("java-runtime-delta", &platform, |_| {})
+            .await
+            .unwrap();
         assert_eq!(first, second);
 
-        let err = runtimes.ensure("java-runtime-omega", &platform, |_| {}).await.unwrap_err();
+        let err = runtimes
+            .ensure("java-runtime-omega", &platform, |_| {})
+            .await
+            .unwrap_err();
         assert!(matches!(err, Error::Unsupported { .. }), "{err}");
     }
 }

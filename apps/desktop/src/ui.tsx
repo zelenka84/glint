@@ -43,6 +43,15 @@ export function B3D({
 
 const SEGMENTS = 32;
 
+/** Pixel on/off switch. */
+export function Switch({ on, onChange, label }: { on: boolean; onChange: (on: boolean) => void; label: string }) {
+  return (
+    <button role="switch" aria-checked={on} aria-label={label} title={label} className={`switch-px ${on ? "on" : ""}`} onClick={() => onChange(!on)}>
+      <span className="knob" />
+    </button>
+  );
+}
+
 export function XpBar({ done, total }: { done: number; total: number }) {
   const filled = Math.min(SEGMENTS, Math.round((done / Math.max(total, 1)) * SEGMENTS));
   return (
@@ -101,6 +110,31 @@ const ICONS = {
   link: "M1 5h7v1H1zM1 10h7v1H1zM1 5h1v6H1zM8 5h7v1H8zM8 10h7v1H8zM14 5h1v6h-1zM5 7h6v2H5z",
   search: "M5 2h5v2H5zM3 4h2v5H3zM10 4h2v5h-2zM5 9h5v2H5zM11 11h2v2h-2zM13 13h2v2h-2z",
   stop: "M3 3h10v10H3z",
+  terminal: "M1 2h14v2H1zM1 12h14v2H1zM1 4h2v8H1zM13 4h2v8h-2zM4 6h2v1H4zM6 7h2v1H6zM4 8h2v1H4zM9 9h3v1H9z",
+  cube: "M4 1h8v2H4zM2 3h12v2H2zM2 5h5v9H2zM9 5h5v9H9z",
+  brush: "M11 1h4v4h-4zM9 5h3v2H9zM7 7h3v2H7zM2 9h5v6H2z",
+  sun: "M7 1h2v2H7zM7 13h2v2H7zM1 7h2v2H1zM13 7h2v2h-2zM3 3h2v2H3zM11 3h2v2h-2zM3 11h2v2H3zM11 11h2v2h-2zM5 5h6v6H5z",
+  notes: "M3 1h8v2H3zM11 3h2v2h-2zM3 3h2v12H3zM11 5h2v10h-2zM5 13h6v2H5zM6 6h4v1H6zM6 9h4v1H6z",
+  globe: "M5 1h6v2H5zM3 3h2v2H3zM11 3h2v2h-2zM1 5h2v6H1zM13 5h2v6h-2zM3 11h2v2H3zM11 11h2v2h-2zM5 13h6v2H5zM7 3h2v10H7zM3 7h10v2H3z",
+  server: "M2 1h12v6H2zM2 9h12v6H2z",
+  image: "M1 2h14v2H1zM1 12h14v2H1zM1 4h2v8H1zM13 4h2v8h-2zM4 9h2v3H4zM6 7h2v5H6zM8 9h4v3H8zM10 5h2v2h-2z",
+  file: "M3 1h7v2H3zM10 3h3v2h-3zM3 3h2v12H3zM11 5h2v10h-2zM5 13h6v2H5zM6 7h4v1H6zM6 10h4v1H6z",
+  back: "M2 7h12v2H2zM4 5h2v2H4zM6 3h2v2H6zM4 9h2v2H4zM6 11h2v2H6z",
+  copy: "M5 1h9v2H5zM12 3h2v8h-2zM2 5h8v10H2z",
+  refresh: "M4 2h7v2H4zM11 4h2v2h-2zM13 2h2v5h-5V5h3zM2 4h2v7H2zM4 11h2v2H4zM6 13h6v-2h2v4H6z",
+  download: "M7 1h2v8H7zM3 7h2v2H3zM11 7h2v2h-2zM5 9h2v2H5zM9 9h2v2H9zM7 11h2v1H7zM1 13h14v2H1z",
+  upload: "M7 4h2v8H7zM5 4h2V2h2v2h2v2H5zM3 6h2v2H3zM11 6h2v2h-2zM1 13h14v2H1z",
+  archive: "M1 2h14v4H1zM2 7h12v8H2zM6 9h4v2H6z",
+  arrowUp: "M7 3h2v11H7zM5 5h2v2H5zM9 5h2v2H9zM3 7h2v2H3zM11 7h2v2h-2z",
+  arrowDown: "M7 2h2v11H7zM5 9h2v2H5zM9 9h2v2H9zM3 7h2v2H3zM11 7h2v2h-2z",
+  chevronLeft: "M9 2h2v2H9zM7 4h2v2H7zM5 6h2v4H5zM7 10h2v2H7zM9 12h2v2H9z",
+  chevronRight: "M5 2h2v2H5zM7 4h2v2H7zM9 6h2v4H9zM7 10h2v2H7zM5 12h2v2H5z",
+  wrap: "M1 3h14v2H1zM1 7h11v2H1zM12 9h2v2h-2zM8 11h4v2H8zM1 11h5v2H1z",
+  follow: "M7 1h2v10H7zM3 7h2v2H3zM11 7h2v2h-2zM5 9h2v2H5zM9 9h2v2H9zM2 13h12v2H2z",
+  external: "M9 1h6v6h-2V4h-1V3h-3zM8 6h2v2H8zM6 8h2v2H6zM1 3h6v2H3v8h8V9h2v6H1z",
+  seed: "M7 1h2v3H7zM5 4h6v2H5zM3 6h10v6H3zM5 12h6v2H5z",
+  pin: "M6 1h4v2H6zM4 3h8v6H4zM7 9h2v6H7z",
+  warn: "M7 1h2v2H7zM6 3h4v2H6zM5 5h6v2H5zM4 7h8v2H4zM3 9h10v2H3zM2 11h12v3H2z",
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -146,6 +180,18 @@ export function Cover({ cover, height = 92 }: { cover: CoverName; height?: numbe
       <rect x="30" y="12" width="4" height="1" fill="#fff" opacity="0.3" />
     </svg>
   );
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
 export function relativeTime(unixSeconds: number | null): string {

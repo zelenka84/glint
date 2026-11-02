@@ -40,10 +40,18 @@ pub fn maven_path(coordinate: &str) -> Option<String> {
         Some(c) => format!("{artifact}-{version}-{c}.{ext}"),
         None => format!("{artifact}-{version}.{ext}"),
     };
-    Some(format!("{}/{artifact}/{version}/{file}", group.replace('.', "/")))
+    Some(format!(
+        "{}/{artifact}/{version}/{file}",
+        group.replace('.', "/")
+    ))
 }
 
-fn from_artifact(lib: &Library, artifact: &Artifact, classifier: Option<&str>, kind: LibraryKind) -> Option<LibraryFile> {
+fn from_artifact(
+    lib: &Library,
+    artifact: &Artifact,
+    classifier: Option<&str>,
+    kind: LibraryKind,
+) -> Option<LibraryFile> {
     let path = match &artifact.path {
         Some(p) => p.clone(),
         None => {
@@ -102,7 +110,12 @@ pub fn library_files(lib: &Library, platform: &Platform) -> Vec<LibraryFile> {
                 && let Some(artifact) = downloads.classifiers.get(&classifier)
             {
                 let exclude = lib.extract.clone().unwrap_or_default().exclude;
-                if let Some(file) = from_artifact(lib, artifact, Some(&classifier), LibraryKind::Natives { exclude }) {
+                if let Some(file) = from_artifact(
+                    lib,
+                    artifact,
+                    Some(&classifier),
+                    LibraryKind::Natives { exclude },
+                ) {
                     files.push(file);
                 }
             }
@@ -110,9 +123,18 @@ pub fn library_files(lib: &Library, platform: &Platform) -> Vec<LibraryFile> {
         // Loader profiles (Fabric, Quilt) give a Maven repository instead of download info.
         None => {
             if let Some(path) = maven_path(&lib.name) {
-                let base = lib.url.as_deref().unwrap_or("https://libraries.minecraft.net/");
+                let base = lib
+                    .url
+                    .as_deref()
+                    .unwrap_or("https://libraries.minecraft.net/");
                 let url = format!("{}/{path}", base.trim_end_matches('/'));
-                files.push(LibraryFile { path, url, sha1: lib.sha1.clone(), size: None, kind: LibraryKind::Classpath });
+                files.push(LibraryFile {
+                    path,
+                    url,
+                    sha1: lib.sha1.clone(),
+                    size: None,
+                    kind: LibraryKind::Classpath,
+                });
             }
         }
     }
@@ -173,7 +195,14 @@ mod tests {
         assert_eq!(library_files(&make("natives-windows"), &x64).len(), 1);
         assert!(library_files(&make("natives-windows-arm64"), &x64).is_empty());
         assert!(library_files(&make("natives-windows-x86"), &x64).is_empty());
-        assert_eq!(library_files(&make("natives-windows-arm64"), &Platform::new(Os::Windows, Arch::Arm64)).len(), 1);
+        assert_eq!(
+            library_files(
+                &make("natives-windows-arm64"),
+                &Platform::new(Os::Windows, Arch::Arm64)
+            )
+            .len(),
+            1
+        );
     }
 
     #[test]
@@ -191,13 +220,20 @@ mod tests {
         let files = library_files(&l, &Platform::new(Os::Windows, Arch::X86_64));
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].sha1.as_deref(), Some("w64"));
-        assert_eq!(files[0].kind, LibraryKind::Natives { exclude: vec!["META-INF/".into()] });
+        assert_eq!(
+            files[0].kind,
+            LibraryKind::Natives {
+                exclude: vec!["META-INF/".into()]
+            }
+        );
         assert!(library_files(&l, &Platform::new(Os::MacOs, Arch::Arm64)).is_empty());
     }
 
     #[test]
     fn loader_style_library_uses_maven_repo() {
-        let l = lib(r#"{"name": "net.fabricmc:fabric-loader:0.16.9", "url": "https://maven.fabricmc.net/"}"#);
+        let l = lib(
+            r#"{"name": "net.fabricmc:fabric-loader:0.16.9", "url": "https://maven.fabricmc.net/"}"#,
+        );
         let files = library_files(&l, &Platform::new(Os::Windows, Arch::X86_64));
         assert_eq!(
             files[0].url,

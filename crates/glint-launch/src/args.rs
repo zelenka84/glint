@@ -16,10 +16,14 @@ pub struct LaunchOptions {
     pub game_assets: PathBuf,
     pub identity: LaunchIdentity,
     pub max_memory_mb: u32,
+    pub min_memory_mb: Option<u32>,
     pub extra_jvm_args: Vec<String>,
     pub resolution: Option<(u32, u32)>,
-    /// Joins this server on start (1.20+ Quick Play), e.g. a Glint Link tunnel.
+    pub fullscreen: bool,
+    /// Joins this server on start: Quick Play on 1.20+, `--server`/`--port` before.
     pub quick_play_server: Option<String>,
+    /// Opens this world folder on start (1.20+ Quick Play).
+    pub quick_play_world: Option<String>,
     pub launcher_version: String,
 }
 
@@ -28,6 +32,8 @@ pub struct LaunchCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
     pub cwd: PathBuf,
+    /// Added to the inherited environment.
+    pub env: Vec<(String, String)>,
 }
 
 pub fn build_command(
@@ -43,12 +49,19 @@ pub fn build_command(
     }
     if options.quick_play_server.is_some() {
         platform.features.insert("is_quick_play_multiplayer".into());
+    } else if options.quick_play_world.is_some() {
+        platform
+            .features
+            .insert("is_quick_play_singleplayer".into());
     }
 
     let vars = variables(layout, version, plan, options, platform.os);
     let sub = |s: &str| substitute(s, &vars);
 
     let mut args = vec![format!("-Xmx{}M", options.max_memory_mb)];
+    if let Some(min) = options.min_memory_mb {
+        args.push(format!("-Xms{}M", min.min(options.max_memory_mb)));
+    }
     args.extend(options.extra_jvm_args.iter().cloned());
 
     match &version.arguments {
@@ -71,17 +84,43 @@ pub fn build_command(
     args.push(version.main_class.clone());
 
     match (&version.arguments, &version.minecraft_arguments) {
-        (Some(arguments), _) => args.extend(evaluate(&arguments.game, &platform).iter().map(|a| sub(a))),
+        (Some(arguments), _) => {
+            args.extend(evaluate(&arguments.game, &platform).iter().map(|a| sub(a)))
+        }
         (None, Some(legacy)) => {
             args.extend(legacy.split_whitespace().map(sub));
             if let Some((w, h)) = options.resolution {
-                args.extend(["--width".into(), w.to_string(), "--height".into(), h.to_string()]);
+                args.extend([
+                    "--width".into(),
+                    w.to_string(),
+                    "--height".into(),
+                    h.to_string(),
+                ]);
             }
         }
         (None, None) => {}
     }
 
-    LaunchCommand { program: options.java.clone(), args, cwd: options.game_dir.clone() }
+    // Versions without Quick Play still take the classic server arguments.
+    if let Some(server) = &options.quick_play_server
+        && !args.iter().any(|a| a == "--quickPlayMultiplayer")
+    {
+        let (host, port) = match server.rsplit_once(':') {
+            Some((h, p)) if p.parse::<u16>().is_ok() => (h, p),
+            _ => (server.as_str(), "25565"),
+        };
+        args.extend(["--server".into(), host.into(), "--port".into(), port.into()]);
+    }
+    if options.fullscreen {
+        args.push("--fullscreen".into());
+    }
+
+    LaunchCommand {
+        program: options.java.clone(),
+        args,
+        cwd: options.game_dir.clone(),
+        env: Vec::new(),
+    }
 }
 
 /// Arguments whose rules allow this platform, flattened.
@@ -109,7 +148,12 @@ fn variables(
 ) -> HashMap<&'static str, String> {
     let path = |p: &Path| p.display().to_string();
     let separator = if os == Os::Windows { ";" } else { ":" };
-    let classpath = plan.classpath.iter().map(|p| path(p)).collect::<Vec<_>>().join(separator);
+    let classpath = plan
+        .classpath
+        .iter()
+        .map(|p| path(p))
+        .collect::<Vec<_>>()
+        .join(separator);
     let index_name = version
         .assets
         .clone()
@@ -122,7 +166,10 @@ fn variables(
         ("auth_player_name", id.name.clone()),
         ("auth_uuid", id.uuid.clone()),
         ("auth_access_token", id.access_token.clone()),
-        ("auth_session", format!("token:{}:{}", id.access_token, id.uuid)),
+        (
+            "auth_session",
+            format!("token:{}:{}", id.access_token, id.uuid),
+        ),
         ("auth_xuid", id.xuid.clone()),
         ("user_type", id.user_type.clone()),
         ("user_properties", "{}".into()),
@@ -141,7 +188,14 @@ fn variables(
         ("launcher_version", options.launcher_version.clone()),
         ("resolution_width", width.to_string()),
         ("resolution_height", height.to_string()),
-        ("quickPlayMultiplayer", options.quick_play_server.clone().unwrap_or_default()),
+        (
+            "quickPlayMultiplayer",
+            options.quick_play_server.clone().unwrap_or_default(),
+        ),
+        (
+            "quickPlaySingleplayer",
+            options.quick_play_world.clone().unwrap_or_default(),
+        ),
     ])
 }
 
@@ -181,7 +235,10 @@ mod tests {
     use glint_meta::{Arch, plan_install};
 
     fn options() -> LaunchOptions {
-        let account = Account::Offline { name: "Steve".into(), uuid: glint_auth::offline_uuid("Steve") };
+        let account = Account::Offline {
+            name: "Steve".into(),
+            uuid: glint_auth::offline_uuid("Steve"),
+        };
         LaunchOptions {
             java: "/java/bin/java".into(),
             game_dir: "/inst/game".into(),
@@ -189,6 +246,9 @@ mod tests {
             game_assets: "/meta/assets".into(),
             identity: account.identity(None),
             max_memory_mb: 4096,
+            min_memory_mb: None,
+            fullscreen: false,
+            quick_play_world: None,
             extra_jvm_args: vec!["-XX:+UseG1GC".into()],
             resolution: None,
             quick_play_server: None,
@@ -229,13 +289,30 @@ mod tests {
         let cmd = build_command(&layout, &version, &plan, &options(), &platform);
         let args = cmd.args.join(" ");
 
-        let main = cmd.args.iter().position(|a| a == "net.minecraft.client.main.Main").unwrap();
+        let main = cmd
+            .args
+            .iter()
+            .position(|a| a == "net.minecraft.client.main.Main")
+            .unwrap();
         assert_eq!(&cmd.args[..2], ["-Xmx4096M", "-XX:+UseG1GC"]);
         assert!(!args.contains("-XstartOnFirstThread"));
         assert!(args.contains("-Dlog4j.configurationFile="));
         let cp = &cmd.args[cmd.args.iter().position(|a| a == "-cp").unwrap() + 1];
-        assert!(cp.contains("brigadier-1.3.10.jar;") && cp.ends_with("1.21.4.jar"), "{cp}");
-        assert_eq!(cmd.args[main + 1..], ["--username", "Steve", "--uuid", &glint_auth::offline_uuid("Steve"), "--assetIndex", "19"]);
+        assert!(
+            cp.contains("brigadier-1.3.10.jar;") && cp.ends_with("1.21.4.jar"),
+            "{cp}"
+        );
+        assert_eq!(
+            cmd.args[main + 1..],
+            [
+                "--username",
+                "Steve",
+                "--uuid",
+                &glint_auth::offline_uuid("Steve"),
+                "--assetIndex",
+                "19"
+            ]
+        );
         assert_eq!(cmd.cwd, Path::new("/inst/game"));
     }
 
@@ -249,10 +326,40 @@ mod tests {
         opts.resolution = Some((1280, 720));
         opts.quick_play_server = Some("127.0.0.1:25565".into());
 
-        let args = build_command(&layout, &version, &plan, &opts, &platform).args.join(" ");
+        let args = build_command(&layout, &version, &plan, &opts, &platform)
+            .args
+            .join(" ");
         assert!(args.contains("--width 1280 --height 720"));
         assert!(args.contains("--quickPlayMultiplayer 127.0.0.1:25565"));
         assert!(args.contains(':'), "Linux classpath separator");
+    }
+
+    #[test]
+    fn legacy_versions_join_servers_the_old_way() {
+        let layout = MetaLayout::new("/meta");
+        let version: VersionInfo = serde_json::from_str(
+            r#"{"id": "1.8.9", "type": "release", "mainClass": "net.minecraft.client.main.Main", "assets": "1.8",
+                "minecraftArguments": "--username ${auth_player_name}"}"#,
+        )
+        .unwrap();
+        let platform = Platform::new(Os::Windows, Arch::X86_64);
+        let plan = plan_install(&layout, &version, None, &platform, "https://res");
+        let mut opts = options();
+        opts.quick_play_server = Some("play.example.net".into());
+        opts.fullscreen = true;
+        opts.min_memory_mb = Some(8192);
+
+        let cmd = build_command(&layout, &version, &plan, &opts, &platform);
+        assert_eq!(
+            &cmd.args[..2],
+            ["-Xmx4096M", "-Xms4096M"],
+            "Xms never exceeds Xmx"
+        );
+        assert!(
+            cmd.args
+                .join(" ")
+                .ends_with("--server play.example.net --port 25565 --fullscreen")
+        );
     }
 
     #[test]
@@ -268,11 +375,20 @@ mod tests {
         let cmd = build_command(&layout, &version, &plan, &options(), &platform);
 
         assert!(cmd.args.contains(&"-cp".to_owned()));
-        assert!(cmd.args.iter().any(|a| a.starts_with("-Djava.library.path=")));
+        assert!(
+            cmd.args
+                .iter()
+                .any(|a| a.starts_with("-Djava.library.path="))
+        );
         let uuid = glint_auth::offline_uuid("Steve");
         let session = format!("token:0:{uuid}");
         assert!(cmd.args.ends_with(&[
-            "--username".into(), "Steve".into(), "--session".into(), session, "--userProperties".into(), "{}".into()
+            "--username".into(),
+            "Steve".into(),
+            "--session".into(),
+            session,
+            "--userProperties".into(),
+            "{}".into()
         ]));
     }
 

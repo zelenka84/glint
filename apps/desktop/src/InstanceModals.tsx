@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { api, type Instance, type LoaderKind, type LoaderVersion, type NewInstance, type VersionList } from "./api";
 import { B3D, Cover, type CoverName, Modal, covers } from "./ui";
 
-function CoverPicker({ value, onChange }: { value: CoverName; onChange: (c: CoverName) => void }) {
+export function CoverPicker({ value, onChange }: { value: CoverName; onChange: (c: CoverName) => void }) {
   return (
     <fieldset className="cover-picker">
       <legend>Cover</legend>
@@ -40,7 +40,7 @@ function MemoryField({ value, onChange }: { value: number; onChange: (mb: number
   );
 }
 
-const LOADERS: { id: LoaderKind | "vanilla"; label: string; hint: string }[] = [
+export const LOADERS: { id: LoaderKind | "vanilla"; label: string; hint: string }[] = [
   { id: "vanilla", label: "Vanilla", hint: "The game as Mojang ships it" },
   { id: "fabric", label: "Fabric", hint: "Light and fast, most performance mods" },
   { id: "quilt", label: "Quilt", hint: "Fabric fork, runs most Fabric mods" },
@@ -48,7 +48,7 @@ const LOADERS: { id: LoaderKind | "vanilla"; label: string; hint: string }[] = [
   { id: "neoforge", label: "NeoForge", hint: "Modern Forge successor, 1.20.2+" },
 ];
 
-function LoaderPicker({ value, onChange }: { value: LoaderKind | "vanilla"; onChange: (v: LoaderKind | "vanilla") => void }) {
+export function LoaderPicker({ value, onChange }: { value: LoaderKind | "vanilla"; onChange: (v: LoaderKind | "vanilla") => void }) {
   return (
     <fieldset className="loader-picker">
       <legend>Mod loader</legend>

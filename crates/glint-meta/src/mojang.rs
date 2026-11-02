@@ -144,7 +144,10 @@ pub struct Arguments {
 #[serde(untagged)]
 pub enum Argument {
     Plain(String),
-    Conditional { rules: Vec<Rule>, value: ArgumentValue },
+    Conditional {
+        rules: Vec<Rule>,
+        value: ArgumentValue,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -227,8 +230,12 @@ mod tests {
         .unwrap();
         let args = v.arguments.unwrap();
         assert!(matches!(&args.game[0], Argument::Plain(s) if s == "--username"));
-        assert!(matches!(&args.game[2], Argument::Conditional { value: ArgumentValue::One(s), .. } if s == "--demo"));
-        assert!(matches!(&args.jvm[0], Argument::Conditional { value: ArgumentValue::Many(v), .. } if v.len() == 1));
+        assert!(
+            matches!(&args.game[2], Argument::Conditional { value: ArgumentValue::One(s), .. } if s == "--demo")
+        );
+        assert!(
+            matches!(&args.jvm[0], Argument::Conditional { value: ArgumentValue::Many(v), .. } if v.len() == 1)
+        );
         assert_eq!(v.java_version.unwrap().major_version, 21);
 
         let old: VersionInfo = serde_json::from_str(
@@ -251,7 +258,13 @@ mod tests {
 
     #[test]
     fn asset_object_path_uses_hash_prefix() {
-        let o = AssetObject { hash: "bdf48ef6b5d0d23bbb02e17d04865216179f510a".into(), size: 1 };
-        assert_eq!(o.object_path(), "bd/bdf48ef6b5d0d23bbb02e17d04865216179f510a");
+        let o = AssetObject {
+            hash: "bdf48ef6b5d0d23bbb02e17d04865216179f510a".into(),
+            size: 1,
+        };
+        assert_eq!(
+            o.object_path(),
+            "bd/bdf48ef6b5d0d23bbb02e17d04865216179f510a"
+        );
     }
 }

@@ -1,5 +1,8 @@
 //! Thin Tauri layer: commands translate between the UI and the `glint-*` crates.
 
+mod gamedir;
+mod settings;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -7,11 +10,11 @@ use glint_auth::ely::ElyClient;
 use glint_auth::{Account, AccountStore, OfflinePolicy, keychain};
 use glint_core::{GlintPaths, InstanceManifest, Loader, LoaderKind};
 use glint_instance::InstanceStore;
-use glint_launch::{PlayEvent, PlayRequest};
+use glint_launch::{PlayEvent, PlayRequest, QuickPlay};
 use glint_meta::mojang::VersionType;
 use glint_meta::{Endpoints, MetaClient, MetaLayout};
 use glint_modrinth::{
-    InstalledMod, ModManager, ModrinthApi, ProjectType, SearchQuery, SearchResults, Target,
+    ContentKind, InstalledMod, ModManager, ModrinthApi, SearchQuery, SearchResults, Target, Update,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -385,6 +388,39 @@ fn update_instance(
     }
 }
 
+/// Switches the Minecraft version and/or mod loader. Mods stay in place; the UI
+/// warns that they may not fit the new version.
+#[tauri::command]
+fn change_version(
+    state: State<'_, AppState>,
+    name: String,
+    game_version: String,
+    loader: Option<LoaderChoice>,
+) -> CmdResult<()> {
+    if state.running.lock().expect("running lock").contains(&name) {
+        return Err("close the game before changing this instance".into());
+    }
+    let mut manifest = state.instances.get(&name).map_err(err)?;
+    manifest.game_version = game_version;
+    manifest.loader = match loader {
+        Some(choice) => Some(Loader {
+            kind: parse_loader_kind(&choice.kind)?,
+            version: choice.version,
+        }),
+        None => None,
+    };
+    state.instances.save(&manifest).map_err(err)
+}
+
+#[tauri::command]
+fn open_libraries_folder(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    let dir = state.paths.meta().join("libraries");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(err)
+}
+
 #[tauri::command]
 fn delete_instance(state: State<'_, AppState>, name: String) -> CmdResult<()> {
     if state.running.lock().expect("running lock").contains(&name) {
@@ -411,6 +447,12 @@ struct PlayEnvelope {
     event: PlayEvent,
 }
 
+#[derive(Deserialize)]
+struct PlayTarget {
+    world: Option<String>,
+    server: Option<String>,
+}
+
 /// Installs and launches `instance` in the background as the active (or given) account.
 /// Progress and game output arrive as `play` events tagged with the instance name;
 /// the last one is `exited` or `failed`.
@@ -420,8 +462,22 @@ async fn play(
     state: State<'_, AppState>,
     instance: String,
     account: Option<String>,
+    target: Option<PlayTarget>,
 ) -> CmdResult<()> {
     let manifest = state.instances.get(&instance).map_err(err)?;
+    // An explicit world or server wins over the instance's auto-join setting.
+    let quick_play = match target {
+        Some(PlayTarget { world: Some(w), .. }) => Some(QuickPlay::World(w)),
+        Some(PlayTarget {
+            server: Some(s), ..
+        }) => Some(QuickPlay::Server(s)),
+        _ => manifest
+            .game
+            .auto_join_server
+            .clone()
+            .map(QuickPlay::Server)
+            .or(manifest.game.auto_join_world.clone().map(QuickPlay::World)),
+    };
     let chosen = {
         let store = state.accounts.lock().expect("accounts lock");
         let chosen = match &account {
@@ -464,6 +520,12 @@ async fn play(
             max_memory_mb: manifest.java.max_memory_mb,
             loader: manifest.loader.clone(),
             extra_jvm_args: manifest.java.extra_args.clone(),
+            min_memory_mb: manifest.java.min_memory_mb,
+            java_path: manifest.java.path.clone(),
+            game: manifest.game.clone(),
+            quick_play,
+            hooks: manifest.hooks.clone(),
+            env: manifest.env.clone().into_iter().collect(),
         };
         let emit = |event: PlayEvent| {
             match &event {
@@ -567,38 +629,43 @@ fn kill_process_tree(pid: u32) -> std::io::Result<()> {
     }
 }
 
-// ---- mods ----
+// ---- content: mods, resource packs, shader packs ----
 
-fn mod_target(state: &AppState, instance: &str) -> CmdResult<(std::path::PathBuf, Target)> {
+fn content_target(state: &AppState, instance: &str) -> CmdResult<(std::path::PathBuf, Target)> {
     let manifest = state.instances.get(instance).map_err(err)?;
-    let loader = manifest.loader.ok_or(
-        "this instance has no mod loader; create a Fabric, Quilt, Forge or NeoForge instance",
-    )?;
     let dir = state.instances.dir(instance).map_err(err)?;
     Ok((
         dir,
         Target {
             game_version: manifest.game_version,
-            loader: loader.kind,
+            loader: manifest.loader.map(|l| l.kind),
         },
     ))
 }
 
+fn content_manager<'a>(
+    state: &'a AppState,
+    dir: std::path::PathBuf,
+    kind: ContentKind,
+) -> ModManager<'a> {
+    ModManager::new(&state.modrinth, state.http.clone(), dir, kind)
+}
+
 #[tauri::command]
-async fn search_mods(
+async fn search_content(
     state: State<'_, AppState>,
     instance: Option<String>,
     query: String,
-    project_type: Option<ProjectType>,
+    kind: ContentKind,
     offset: Option<u32>,
 ) -> CmdResult<SearchResults> {
     let target = match instance {
-        Some(name) => Some(mod_target(&state, &name)?.1),
+        Some(name) => Some(content_target(&state, &name)?.1),
         None => None,
     };
     let query = SearchQuery {
         text: query,
-        project_type: project_type.unwrap_or(ProjectType::Mod),
+        project_type: kind.project_type(),
         target,
         category: None,
         offset: offset.unwrap_or(0),
@@ -608,50 +675,121 @@ async fn search_mods(
 }
 
 #[tauri::command]
-async fn install_mod(
+async fn install_content(
     state: State<'_, AppState>,
     instance: String,
+    kind: ContentKind,
     project_id: String,
 ) -> CmdResult<Vec<String>> {
-    let (dir, target) = mod_target(&state, &instance)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir)
+    let (dir, target) = content_target(&state, &instance)?;
+    content_manager(&state, dir, kind)
         .install(&project_id, &target)
         .await
         .map_err(err)
 }
 
 #[tauri::command]
-fn installed_mods(state: State<'_, AppState>, instance: String) -> CmdResult<Vec<InstalledMod>> {
-    let dir = state.instances.dir(&instance).map_err(err)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir)
-        .list()
+async fn update_content(
+    state: State<'_, AppState>,
+    instance: String,
+    kind: ContentKind,
+    project_id: String,
+) -> CmdResult<Vec<String>> {
+    let (dir, target) = content_target(&state, &instance)?;
+    content_manager(&state, dir, kind)
+        .update(&project_id, &target)
+        .await
         .map_err(err)
 }
 
 #[tauri::command]
-async fn remove_mod(
+async fn content_updates(
     state: State<'_, AppState>,
     instance: String,
+    kind: ContentKind,
+) -> CmdResult<Vec<Update>> {
+    let (dir, target) = content_target(&state, &instance)?;
+    content_manager(&state, dir, kind)
+        .check_updates(&target)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+fn installed_content(
+    state: State<'_, AppState>,
+    instance: String,
+    kind: ContentKind,
+) -> CmdResult<Vec<InstalledMod>> {
+    let dir = state.instances.dir(&instance).map_err(err)?;
+    content_manager(&state, dir, kind).list().map_err(err)
+}
+
+#[tauri::command]
+async fn add_content_files(
+    state: State<'_, AppState>,
+    instance: String,
+    kind: ContentKind,
+    paths: Vec<String>,
+) -> CmdResult<Vec<String>> {
+    let dir = state.instances.dir(&instance).map_err(err)?;
+    let manager = content_manager(&state, dir, kind);
+    let mut added = Vec::new();
+    for path in paths {
+        added.push(
+            manager
+                .add_file(std::path::Path::new(&path))
+                .await
+                .map_err(err)?,
+        );
+    }
+    Ok(added)
+}
+
+#[tauri::command]
+async fn remove_content(
+    state: State<'_, AppState>,
+    instance: String,
+    kind: ContentKind,
     filename: String,
 ) -> CmdResult<()> {
     let dir = state.instances.dir(&instance).map_err(err)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir)
+    content_manager(&state, dir, kind)
         .remove(&filename)
         .await
         .map_err(err)
 }
 
 #[tauri::command]
-async fn set_mod_enabled(
+async fn set_content_enabled(
     state: State<'_, AppState>,
     instance: String,
+    kind: ContentKind,
     filename: String,
     enabled: bool,
 ) -> CmdResult<()> {
     let dir = state.instances.dir(&instance).map_err(err)?;
-    ModManager::new(&state.modrinth, state.http.clone(), dir)
+    content_manager(&state, dir, kind)
         .set_enabled(&filename, enabled)
         .await
+        .map_err(err)
+}
+
+#[tauri::command]
+fn open_content_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    instance: String,
+    kind: ContentKind,
+) -> CmdResult<()> {
+    let dir = state
+        .instances
+        .game_dir(&instance)
+        .map_err(err)?
+        .join(kind.folder());
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
         .map_err(err)
 }
 
@@ -713,15 +851,46 @@ pub fn run() {
             create_instance,
             update_instance,
             delete_instance,
+            change_version,
+            open_libraries_folder,
             open_instance_folder,
             play,
             kill_instance,
             loader_versions,
-            search_mods,
-            install_mod,
-            installed_mods,
-            remove_mod,
-            set_mod_enabled
+            search_content,
+            install_content,
+            update_content,
+            content_updates,
+            installed_content,
+            add_content_files,
+            remove_content,
+            set_content_enabled,
+            open_content_folder,
+            gamedir::list_worlds,
+            gamedir::rename_world,
+            gamedir::duplicate_world,
+            gamedir::backup_world,
+            gamedir::delete_world,
+            gamedir::open_world_folder,
+            gamedir::reveal_path,
+            gamedir::list_servers,
+            gamedir::save_servers,
+            gamedir::ping_server,
+            gamedir::list_screenshots,
+            gamedir::rename_screenshot,
+            gamedir::delete_screenshot,
+            gamedir::open_screenshot,
+            gamedir::open_game_subfolder,
+            gamedir::list_log_files,
+            gamedir::read_log_file,
+            gamedir::delete_log_file,
+            gamedir::delete_old_logs,
+            gamedir::read_notes,
+            gamedir::save_notes,
+            settings::instance_settings,
+            settings::save_instance_settings,
+            settings::detect_java,
+            settings::check_java
         ])
         .run(tauri::generate_context!())
         .expect("error while running Glint");

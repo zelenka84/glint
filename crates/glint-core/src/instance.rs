@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +24,56 @@ pub struct InstanceManifest {
     /// Unix seconds of the last launch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_played: Option<u64>,
+    #[serde(default, skip_serializing_if = "GameSettings::is_default")]
+    pub game: GameSettings,
+    #[serde(default, skip_serializing_if = "LaunchHooks::is_default")]
+    pub hooks: LaunchHooks,
+    /// Extra environment variables for the game process and hooks.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+}
+
+/// How the game window starts and where the game goes first.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fullscreen: bool,
+    /// Joins this server on every launch (Quick Play on 1.20+, `--server` before).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_join_server: Option<String>,
+    /// Opens this world (folder in `saves/`) on every launch; 1.20+ only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_join_world: Option<String>,
+}
+
+impl GameSettings {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Shell commands run around the game, Prism-style.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LaunchHooks {
+    /// Runs before the game starts; a failure cancels the launch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_launch: Option<String>,
+    /// Program the Java command is passed to, e.g. `prime-run` or `gamemoderun`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wrapper: Option<String>,
+    /// Runs after the game exits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_exit: Option<String>,
+}
+
+impl LaunchHooks {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,8 +105,13 @@ pub struct JavaSettings {
     pub major: Option<u32>,
     #[serde(default = "default_max_memory_mb")]
     pub max_memory_mb: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_memory_mb: Option<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_args: Vec<String>,
+    /// A Java executable to use instead of the runtime Glint downloads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<PathBuf>,
 }
 
 fn default_max_memory_mb() -> u32 {
@@ -64,7 +120,13 @@ fn default_max_memory_mb() -> u32 {
 
 impl Default for JavaSettings {
     fn default() -> Self {
-        Self { major: None, max_memory_mb: default_max_memory_mb(), extra_args: Vec::new() }
+        Self {
+            major: None,
+            max_memory_mb: default_max_memory_mb(),
+            min_memory_mb: None,
+            extra_args: Vec::new(),
+            path: None,
+        }
     }
 }
 
@@ -78,6 +140,9 @@ impl InstanceManifest {
             java: JavaSettings::default(),
             cover: None,
             last_played: None,
+            game: GameSettings::default(),
+            hooks: LaunchHooks::default(),
+            env: BTreeMap::new(),
         }
     }
 
@@ -125,8 +190,26 @@ mod tests {
     #[test]
     fn full_manifest_round_trips() {
         let mut m = InstanceManifest::vanilla("Survival with friends", "1.21.4");
-        m.loader = Some(Loader { kind: LoaderKind::NeoForge, version: "21.4.10".into() });
-        m.java = JavaSettings { major: Some(21), max_memory_mb: 6144, extra_args: vec!["-XX:+UseZGC".into()] };
+        m.loader = Some(Loader {
+            kind: LoaderKind::NeoForge,
+            version: "21.4.10".into(),
+        });
+        m.java = JavaSettings {
+            major: Some(21),
+            max_memory_mb: 6144,
+            min_memory_mb: Some(1024),
+            extra_args: vec!["-XX:+UseZGC".into()],
+            path: Some("C:/Java/bin/javaw.exe".into()),
+        };
+        m.game = GameSettings {
+            width: Some(1280),
+            height: Some(720),
+            fullscreen: true,
+            ..GameSettings::default()
+        };
+        m.hooks.wrapper = Some("gamemoderun".into());
+        m.env
+            .insert("MESA_GL_VERSION_OVERRIDE".into(), "4.5".into());
 
         let text = m.to_toml().unwrap();
         assert!(text.contains(r#"kind = "neoforge""#), "{text}");

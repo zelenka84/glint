@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 glint-auth.workspace = true
 glint-core.workspace = true
+glint-gamedir.workspace = true
 glint-instance.workspace = true
 glint-launch.workspace = true
 glint-loader.workspace = true
@@ -26,7 +27,7 @@ glint-net.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tracing.workspace = true
 

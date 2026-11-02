@@ -22,7 +22,10 @@ fn extract_blocking(archives: &[(PathBuf, Vec<String>)], dest: &Path) -> Result<
     std::fs::create_dir_all(dest).map_err(|e| io(dest, e))?;
 
     for (archive_path, exclude) in archives {
-        let zip_err = |source| Error::Zip { path: archive_path.clone(), source };
+        let zip_err = |source| Error::Zip {
+            path: archive_path.clone(),
+            source,
+        };
         let file = std::fs::File::open(archive_path).map_err(|e| io(archive_path, e))?;
         let mut archive = zip::ZipArchive::new(file).map_err(zip_err)?;
         for i in 0..archive.len() {
@@ -31,7 +34,11 @@ fn extract_blocking(archives: &[(PathBuf, Vec<String>)], dest: &Path) -> Result<
                 continue;
             };
             let name = rel.to_string_lossy().replace('\\', "/");
-            if entry.is_dir() || exclude.iter().any(|prefix| name.starts_with(prefix.as_str())) {
+            if entry.is_dir()
+                || exclude
+                    .iter()
+                    .any(|prefix| name.starts_with(prefix.as_str()))
+            {
                 continue;
             }
             let out = dest.join(&rel);
@@ -53,7 +60,8 @@ mod tests {
     fn make_zip(path: &Path, files: &[(&str, &[u8])]) {
         let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
         for (name, body) in files {
-            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            zip.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
             zip.write_all(body).unwrap();
         }
         zip.finish().unwrap();
@@ -63,12 +71,21 @@ mod tests {
     async fn extracts_and_skips_excluded_entries() {
         let tmp = tempfile::tempdir().unwrap();
         let archive = tmp.path().join("natives.jar");
-        make_zip(&archive, &[("lwjgl64.dll", b"dll"), ("META-INF/MANIFEST.MF", b"m"), ("../escape.dll", b"x")]);
+        make_zip(
+            &archive,
+            &[
+                ("lwjgl64.dll", b"dll"),
+                ("META-INF/MANIFEST.MF", b"m"),
+                ("../escape.dll", b"x"),
+            ],
+        );
         let dest = tmp.path().join("natives");
         std::fs::create_dir_all(&dest).unwrap();
         std::fs::write(dest.join("stale.dll"), b"old").unwrap();
 
-        extract(&[(archive, vec!["META-INF/".into()])], &dest).await.unwrap();
+        extract(&[(archive, vec!["META-INF/".into()])], &dest)
+            .await
+            .unwrap();
 
         assert_eq!(std::fs::read(dest.join("lwjgl64.dll")).unwrap(), b"dll");
         assert!(!dest.join("META-INF").exists());

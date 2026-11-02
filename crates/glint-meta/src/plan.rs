@@ -125,7 +125,9 @@ pub fn plan_install(
                         plan.classpath.push(dest.clone());
                     }
                 }
-                LibraryKind::Natives { exclude } => plan.natives.push((dest.clone(), exclude.clone())),
+                LibraryKind::Natives { exclude } => {
+                    plan.natives.push((dest.clone(), exclude.clone()))
+                }
             }
             // Forge lists jars its installer generates locally with an empty URL.
             if file.url.is_empty() {
@@ -217,7 +219,13 @@ mod tests {
         .unwrap();
 
         let layout = MetaLayout::new("/meta");
-        let plan = plan_install(&layout, &version, Some(&index), &Platform::new(Os::Windows, Arch::X86_64), "https://res/");
+        let plan = plan_install(
+            &layout,
+            &version,
+            Some(&index),
+            &Platform::new(Os::Windows, Arch::X86_64),
+            "https://res/",
+        );
 
         // brigadier once, client, log config, two unique assets; the macOS native is skipped.
         assert_eq!(plan.files.len(), 5);
@@ -225,7 +233,9 @@ mod tests {
         assert_eq!(
             plan.classpath,
             vec![
-                layout.libraries().join("com/mojang/brigadier/1.3.10/brigadier-1.3.10.jar"),
+                layout
+                    .libraries()
+                    .join("com/mojang/brigadier/1.3.10/brigadier-1.3.10.jar"),
                 layout.client_jar("1.21.4"),
             ]
         );

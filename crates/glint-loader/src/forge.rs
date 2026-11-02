@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use glint_core::LoaderKind;
 use glint_meta::library::{library_files, maven_path};
 use glint_meta::mojang::{Library, VersionInfo};
-use glint_meta::{InstallPlan, MetaClient, Os, Platform, PlannedFile};
+use glint_meta::{InstallPlan, MetaClient, Os, PlannedFile, Platform};
 use glint_net::ExpectedHash;
 use serde::Deserialize;
 
@@ -54,11 +54,15 @@ fn coordinates(kind: LoaderKind, game: &str, loader: &str) -> (String, String) {
     match kind {
         LoaderKind::NeoForge => (
             loader.to_owned(),
-            format!("https://maven.neoforged.net/releases/net/neoforged/neoforge/{loader}/neoforge-{loader}-installer.jar"),
+            format!(
+                "https://maven.neoforged.net/releases/net/neoforged/neoforge/{loader}/neoforge-{loader}-installer.jar"
+            ),
         ),
         _ => {
             let full = format!("{game}-{loader}");
-            let url = format!("https://maven.minecraftforge.net/net/minecraftforge/forge/{full}/forge-{full}-installer.jar");
+            let url = format!(
+                "https://maven.minecraftforge.net/net/minecraftforge/forge/{full}/forge-{full}-installer.jar"
+            );
             (full, url)
         }
     }
@@ -74,7 +78,11 @@ pub(crate) async fn install(
     platform: &Platform,
 ) -> Result<VersionInfo> {
     let (full, url) = coordinates(kind, &vanilla.id, loader);
-    let name = if kind == LoaderKind::NeoForge { "neoforge" } else { "forge" };
+    let name = if kind == LoaderKind::NeoForge {
+        "neoforge"
+    } else {
+        "forge"
+    };
     let dir = loaders_dir(meta).join(name).join(&full);
     let profile_path = dir.join("version.json");
 
@@ -85,14 +93,17 @@ pub(crate) async fn install(
     let installer = dir.join("installer.jar");
     if !installer.is_file() {
         let downloader = glint_net::Downloader::new(http.clone(), 1);
-        downloader.download(&url, &installer, None).await.map_err(|e| match e {
-            glint_net::Error::Status { status: 404, .. } => Error::UnknownVersion {
-                loader: crate::display_name(kind),
-                version: loader.into(),
-                game: vanilla.id.clone(),
-            },
-            other => other.into(),
-        })?;
+        downloader
+            .download(&url, &installer, None)
+            .await
+            .map_err(|e| match e {
+                glint_net::Error::Status { status: 404, .. } => Error::UnknownVersion {
+                    loader: crate::display_name(kind),
+                    version: loader.into(),
+                    game: vanilla.id.clone(),
+                },
+                other => other.into(),
+            })?;
     }
 
     let mut archive = open_zip(&installer)?;
@@ -105,8 +116,11 @@ pub(crate) async fn install(
         )));
     }
     let version_text = read_entry(&mut archive, &installer, "version.json")?;
-    let profile: VersionInfo = serde_json::from_slice(&version_text)
-        .map_err(|source| Error::Json { what: format!("{name} version.json"), source })?;
+    let profile: VersionInfo =
+        serde_json::from_slice(&version_text).map_err(|source| Error::Json {
+            what: format!("{name} version.json"),
+            source,
+        })?;
 
     let libraries = meta.layout().libraries();
     extract_maven(&mut archive, &installer, &libraries)?;
@@ -121,36 +135,61 @@ pub(crate) async fn install(
             if file.url.is_empty() || dest.is_file() || !seen.insert(dest.clone()) {
                 continue;
             }
-            plan.files.push(PlannedFile { url: file.url, dest, hash: file.sha1.map(ExpectedHash::Sha1), size: file.size });
+            plan.files.push(PlannedFile {
+                url: file.url,
+                dest,
+                hash: file.sha1.map(ExpectedHash::Sha1),
+                size: file.size,
+            });
         }
     }
     meta.install(&plan, |_| {}).await?;
 
     let data = resolve_data(&install, &mut archive, &installer, &dir, meta, vanilla)?;
     for processor in &install.processors {
-        let for_client = processor.sides.as_ref().is_none_or(|s| s.iter().any(|side| side == "client"));
+        let for_client = processor
+            .sides
+            .as_ref()
+            .is_none_or(|s| s.iter().any(|side| side == "client"));
         if for_client {
             run_processor(processor, &data, &libraries, java, platform.os).await?;
         }
     }
 
-    tokio::fs::write(&profile_path, &version_text).await.map_err(|e| io(&profile_path, e))?;
-    tokio::fs::write(dir.join(MARKER), b"").await.map_err(|e| io(&dir, e))?;
+    tokio::fs::write(&profile_path, &version_text)
+        .await
+        .map_err(|e| io(&profile_path, e))?;
+    tokio::fs::write(dir.join(MARKER), b"")
+        .await
+        .map_err(|e| io(&dir, e))?;
     Ok(profile)
 }
 
 async fn read_profile(path: &Path) -> Result<VersionInfo> {
     let text = tokio::fs::read(path).await.map_err(|e| io(path, e))?;
-    serde_json::from_slice(&text).map_err(|source| Error::Json { what: path.display().to_string(), source })
+    serde_json::from_slice(&text).map_err(|source| Error::Json {
+        what: path.display().to_string(),
+        source,
+    })
 }
 
 fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>> {
     let file = std::fs::File::open(path).map_err(|e| io(path, e))?;
-    zip::ZipArchive::new(file).map_err(|source| Error::Zip { path: path.to_owned(), source })
+    zip::ZipArchive::new(file).map_err(|source| Error::Zip {
+        path: path.to_owned(),
+        source,
+    })
 }
 
-fn read_entry(archive: &mut zip::ZipArchive<std::fs::File>, path: &Path, name: &str) -> Result<Vec<u8>> {
-    let mut entry = archive.by_name(name).map_err(|source| Error::Zip { path: path.to_owned(), source })?;
+fn read_entry(
+    archive: &mut zip::ZipArchive<std::fs::File>,
+    path: &Path,
+    name: &str,
+) -> Result<Vec<u8>> {
+    let mut entry = archive.by_name(name).map_err(|source| Error::Zip {
+        path: path.to_owned(),
+        source,
+    })?;
     let mut bytes = Vec::new();
     entry.read_to_end(&mut bytes).map_err(|e| io(path, e))?;
     Ok(bytes)
@@ -162,14 +201,27 @@ fn parse_entry<T: serde::de::DeserializeOwned>(
     name: &str,
 ) -> Result<T> {
     let bytes = read_entry(archive, path, name)?;
-    serde_json::from_slice(&bytes).map_err(|source| Error::Json { what: name.to_owned(), source })
+    serde_json::from_slice(&bytes).map_err(|source| Error::Json {
+        what: name.to_owned(),
+        source,
+    })
 }
 
 /// Installers embed some jars (the Forge universal jar) under `maven/`.
-fn extract_maven(archive: &mut zip::ZipArchive<std::fs::File>, path: &Path, libraries: &Path) -> Result<()> {
+fn extract_maven(
+    archive: &mut zip::ZipArchive<std::fs::File>,
+    path: &Path,
+    libraries: &Path,
+) -> Result<()> {
     for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|source| Error::Zip { path: path.to_owned(), source })?;
-        let Some(rel) = entry.enclosed_name().and_then(|n| n.strip_prefix("maven").ok().map(Path::to_path_buf)) else {
+        let mut entry = archive.by_index(i).map_err(|source| Error::Zip {
+            path: path.to_owned(),
+            source,
+        })?;
+        let Some(rel) = entry
+            .enclosed_name()
+            .and_then(|n| n.strip_prefix("maven").ok().map(Path::to_path_buf))
+        else {
             continue;
         };
         if entry.is_dir() || rel.as_os_str().is_empty() {
@@ -189,7 +241,8 @@ fn extract_maven(archive: &mut zip::ZipArchive<std::fs::File>, path: &Path, libr
 }
 
 fn library_path(libraries: &Path, coordinate: &str) -> Result<String> {
-    let rel = maven_path(coordinate).ok_or_else(|| Error::Unsupported(format!("bad library coordinate {coordinate}")))?;
+    let rel = maven_path(coordinate)
+        .ok_or_else(|| Error::Unsupported(format!("bad library coordinate {coordinate}")))?;
     Ok(libraries.join(rel).display().to_string())
 }
 
@@ -205,7 +258,10 @@ fn resolve_data(
     let libraries = meta.layout().libraries();
     let mut data = HashMap::from([
         ("SIDE".to_owned(), "client".to_owned()),
-        ("MINECRAFT_JAR".to_owned(), meta.layout().client_jar(&vanilla.id).display().to_string()),
+        (
+            "MINECRAFT_JAR".to_owned(),
+            meta.layout().client_jar(&vanilla.id).display().to_string(),
+        ),
         ("MINECRAFT_VERSION".to_owned(), vanilla.id.clone()),
         ("ROOT".to_owned(), dir.display().to_string()),
         ("INSTALLER".to_owned(), installer.display().to_string()),
@@ -213,7 +269,9 @@ fn resolve_data(
     ]);
     for (key, value) in &install.data {
         let value = &value.client;
-        let resolved = if let Some(coord) = value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
+        let resolved = if let Some(coord) =
+            value.strip_prefix('[').and_then(|v| v.strip_suffix(']'))
+        {
             library_path(&libraries, coord)?
         } else if let Some(literal) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
             literal.to_owned()
@@ -266,7 +324,10 @@ fn main_class(jar: &Path) -> Result<String> {
     let manifest = read_entry(&mut archive, jar, "META-INF/MANIFEST.MF")?;
     String::from_utf8_lossy(&manifest)
         .lines()
-        .find_map(|line| line.strip_prefix("Main-Class:").map(|v| v.trim().to_owned()))
+        .find_map(|line| {
+            line.strip_prefix("Main-Class:")
+                .map(|v| v.trim().to_owned())
+        })
         .ok_or_else(|| Error::Unsupported(format!("{} has no Main-Class", jar.display())))
 }
 
@@ -289,7 +350,12 @@ async fn run_processor(
     let outputs = processor
         .outputs
         .iter()
-        .map(|(file, sha)| Ok((PathBuf::from(resolve_arg(file, data, libraries)?), resolve_arg(sha, data, libraries)?)))
+        .map(|(file, sha)| {
+            Ok((
+                PathBuf::from(resolve_arg(file, data, libraries)?),
+                resolve_arg(sha, data, libraries)?,
+            ))
+        })
         .collect::<Result<Vec<_>>>()?;
     if !outputs.is_empty() && outputs_ready(&outputs).await {
         return Ok(());
@@ -301,8 +367,16 @@ async fn run_processor(
     for coord in &processor.classpath {
         classpath.push(library_path(libraries, coord)?);
     }
-    let args = processor.args.iter().map(|a| resolve_arg(a, data, libraries)).collect::<Result<Vec<_>>>()?;
-    let step = format!("{} {}", processor.jar, args.first().map(String::as_str).unwrap_or_default());
+    let args = processor
+        .args
+        .iter()
+        .map(|a| resolve_arg(a, data, libraries))
+        .collect::<Result<Vec<_>>>()?;
+    let step = format!(
+        "{} {}",
+        processor.jar,
+        args.first().map(String::as_str).unwrap_or_default()
+    );
     tracing::info!(step, "running loader installer step");
 
     let mut cmd = tokio::process::Command::new(java);
@@ -316,7 +390,11 @@ async fn run_processor(
     cmd.creation_flags(0x0800_0000);
     let output = cmd.output().await.map_err(|e| io(java, e))?;
     if !output.status.success() {
-        let text = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
         let tail: Vec<&str> = text.lines().rev().take(12).collect();
         return Err(Error::Processor {
             step,
@@ -325,7 +403,11 @@ async fn run_processor(
         });
     }
     if !outputs.is_empty() && !outputs_ready(&outputs).await {
-        return Err(Error::Processor { step, status: "finished".into(), output: "produced files do not match their checksums".into() });
+        return Err(Error::Processor {
+            step,
+            status: "finished".into(),
+            output: "produced files do not match their checksums".into(),
+        });
     }
     Ok(())
 }
@@ -338,14 +420,31 @@ mod tests {
     fn arguments_resolve_libraries_and_data() {
         let libs = Path::new("/libs");
         let data = HashMap::from([
-            ("MC_OFF".to_owned(), "/libs/net/minecraft/client/1.21.4/client-1.21.4-official.jar".to_owned()),
-            ("MC_OFF_SHA".to_owned(), "1848e6275e667d4196ec13b7785a4d13cc6b7a82".to_owned()),
+            (
+                "MC_OFF".to_owned(),
+                "/libs/net/minecraft/client/1.21.4/client-1.21.4-official.jar".to_owned(),
+            ),
+            (
+                "MC_OFF_SHA".to_owned(),
+                "1848e6275e667d4196ec13b7785a4d13cc6b7a82".to_owned(),
+            ),
         ]);
-        assert_eq!(resolve_arg("{MC_OFF}", &data, libs).unwrap(), data["MC_OFF"]);
-        assert_eq!(resolve_arg("{MC_OFF_SHA}", &data, libs).unwrap(), data["MC_OFF_SHA"]);
-        assert_eq!(resolve_arg("--side={SIDE}", &data, libs).unwrap(), "--side={SIDE}");
         assert_eq!(
-            PathBuf::from(resolve_arg("[net.minecraft:client:1.21.4:mappings@tsrg]", &data, libs).unwrap()),
+            resolve_arg("{MC_OFF}", &data, libs).unwrap(),
+            data["MC_OFF"]
+        );
+        assert_eq!(
+            resolve_arg("{MC_OFF_SHA}", &data, libs).unwrap(),
+            data["MC_OFF_SHA"]
+        );
+        assert_eq!(
+            resolve_arg("--side={SIDE}", &data, libs).unwrap(),
+            "--side={SIDE}"
+        );
+        assert_eq!(
+            PathBuf::from(
+                resolve_arg("[net.minecraft:client:1.21.4:mappings@tsrg]", &data, libs).unwrap()
+            ),
             libs.join("net/minecraft/client/1.21.4/client-1.21.4-mappings.tsrg")
         );
     }

@@ -15,7 +15,7 @@ mod session;
 pub use args::{LaunchCommand, LaunchOptions, build_command};
 pub use log::{LogEntry, LogParser};
 pub use process::{GameProcess, LogLine, LogStream, spawn};
-pub use session::{Download, PlayError, PlayEvent, PlayRequest, play};
+pub use session::{Download, PlayError, PlayEvent, PlayRequest, QuickPlay, play};
 
 use std::path::{Path, PathBuf};
 
@@ -52,7 +52,10 @@ pub enum Error {
 }
 
 pub(crate) fn io(path: &Path, source: std::io::Error) -> Error {
-    Error::Io { path: path.to_owned(), source }
+    Error::Io {
+        path: path.to_owned(),
+        source,
+    }
 }
 
 /// Gets an installed version ready to start: extracts legacy natives into
@@ -67,10 +70,15 @@ pub async fn prepare(
     game_dir: &Path,
 ) -> Result<PathBuf> {
     natives::extract(&plan.natives, natives_dir).await?;
-    tokio::fs::create_dir_all(game_dir).await.map_err(|e| io(game_dir, e))?;
+    tokio::fs::create_dir_all(game_dir)
+        .await
+        .map_err(|e| io(game_dir, e))?;
     match index {
         Some(index) => {
-            let index_id = version.asset_index.as_ref().map_or("legacy", |a| a.id.as_str());
+            let index_id = version
+                .asset_index
+                .as_ref()
+                .map_or("legacy", |a| a.id.as_str());
             assets::prepare_legacy(layout, index_id, index, game_dir).await
         }
         None => Ok(layout.assets()),
