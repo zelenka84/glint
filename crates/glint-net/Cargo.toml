@@ -1,0 +1,20 @@
+[package]
+name = "glint-net"
+description = "HTTP client and verified file downloads for the Glint launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+futures-util.workspace = true
+hex.workspace = true
+reqwest.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+wiremock.workspace = true

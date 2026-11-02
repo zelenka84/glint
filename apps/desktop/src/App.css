@@ -1,0 +1,74 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/pixelify-sans/600.css";
+
+/* Theme "Mine" from the design canvas; the full token set moves into a design-system package later. */
+:root {
+  --bg: #0b0c0e;
+  --panel: #141518;
+  --text: #eeedea;
+  --muted: #a3a19b;
+  --accent: #5ce1e6;
+  --danger: #ff8a7a;
+  --display-font: "Pixelify Sans";
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.pix {
+  font-family: var(--display-font), monospace;
+  font-synthesis: none;
+}
+
+.px4 {
+  clip-path: polygon(0 4px, 4px 4px, 4px 0, calc(100% - 4px) 0, calc(100% - 4px) 4px, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 4px calc(100% - 4px), 0 calc(100% - 4px));
+}
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 56px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.panel {
+  margin-top: 24px;
+  padding: 20px 24px;
+  background: var(--panel);
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 24px;
+  margin: 0;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  word-break: break-all;
+}
