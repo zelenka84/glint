@@ -44,8 +44,9 @@ pub struct MetaClient {
     endpoints: Endpoints,
 }
 
-/// Parallel downloads during installs. Assets are thousands of small files.
-const INSTALL_CONCURRENCY: usize = 32;
+/// Parallel downloads during installs. Assets are thousands of small files, but
+/// local proxies and VPN clients start dropping connections well before 32.
+const INSTALL_CONCURRENCY: usize = 12;
 
 impl MetaClient {
     pub fn new(http: reqwest::Client, layout: MetaLayout, endpoints: Endpoints) -> Self {

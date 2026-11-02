@@ -33,8 +33,10 @@ impl Downloader {
         Self {
             client,
             permits: Arc::new(Semaphore::new(max_concurrent.max(1))),
-            attempts: 3,
-            retry_delay: Duration::from_millis(500),
+            // Generous on purpose: many players go through VPNs and local proxies
+            // that drop connections when a lot of them open at once.
+            attempts: 5,
+            retry_delay: Duration::from_secs(1),
         }
     }
 

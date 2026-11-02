@@ -40,7 +40,7 @@ pub const USER_AGENT: &str = concat!("glint-launcher/", env!("CARGO_PKG_VERSION"
 pub fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
-        .connect_timeout(std::time::Duration::from_secs(15))
+        .connect_timeout(std::time::Duration::from_secs(30))
         .build()
         .expect("static reqwest configuration is valid")
 }
