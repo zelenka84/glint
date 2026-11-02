@@ -1469,12 +1469,18 @@ dependencies = [
 name = "glint-desktop"
 version = "0.1.0"
 dependencies = [
+ "glint-auth",
  "glint-core",
+ "glint-launch",
+ "glint-meta",
+ "glint-net",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tracing",
 ]
 
 [[package]]
@@ -1505,6 +1511,8 @@ dependencies = [
  "glint-java",
  "glint-meta",
  "glint-net",
+ "reqwest 0.12.28",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",

@@ -189,26 +189,35 @@ impl JavaRuntimes {
             }
         }
 
-        let files: Vec<_> = manifest
+        // (destination, url, sha1, size, executable), owned so the futures stay `Send`.
+        let files: Vec<(PathBuf, String, String, u64, bool)> = manifest
             .files
             .iter()
             .filter_map(|(rel, f)| match f {
-                RuntimeFile::File { downloads, executable } => Some((dir.join(rel), &downloads.raw, *executable)),
+                RuntimeFile::File { downloads, executable } => Some((
+                    dir.join(rel),
+                    downloads.raw.url.clone(),
+                    downloads.raw.sha1.clone(),
+                    downloads.raw.size,
+                    *executable,
+                )),
                 _ => None,
             })
             .collect();
         let total_files = files.len();
-        let total_bytes = files.iter().map(|(_, raw, _)| raw.size).sum();
+        let total_bytes = files.iter().map(|f| f.3).sum();
         let done = AtomicUsize::new(0);
         let done_bytes = std::sync::atomic::AtomicU64::new(0);
 
-        let mut results = stream::iter(&files)
-            .map(|(dest, raw, executable)| async {
-                self.downloader.download(&raw.url, dest, Some(&ExpectedHash::Sha1(raw.sha1.clone()))).await?;
-                if *executable {
-                    make_executable(dest).await?;
+        let downloader = &self.downloader;
+        let done_bytes_ref = &done_bytes;
+        let mut results = stream::iter(files)
+            .map(move |(dest, url, sha1, size, executable)| async move {
+                downloader.download(&url, &dest, Some(&ExpectedHash::Sha1(sha1))).await?;
+                if executable {
+                    make_executable(&dest).await?;
                 }
-                done_bytes.fetch_add(raw.size, Ordering::Relaxed);
+                done_bytes_ref.fetch_add(size, Ordering::Relaxed);
                 Ok::<_, Error>(())
             })
             .buffer_unordered(8);

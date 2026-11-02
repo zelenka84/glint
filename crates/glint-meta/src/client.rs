@@ -108,10 +108,13 @@ impl MetaClient {
         let total_bytes = plan.total_bytes();
         let done_bytes = AtomicU64::new(0);
 
-        let mut results = stream::iter(&plan.files)
-            .map(|file| async {
-                self.downloader.download(&file.url, &file.dest, file.hash.as_ref()).await?;
-                done_bytes.fetch_add(file.size.unwrap_or(0), Ordering::Relaxed);
+        // Owned items keep the resulting future `Send` for any caller lifetime.
+        let downloader = &self.downloader;
+        let done_bytes_ref = &done_bytes;
+        let mut results = stream::iter(plan.files.iter().cloned())
+            .map(move |file| async move {
+                downloader.download(&file.url, &file.dest, file.hash.as_ref()).await?;
+                done_bytes_ref.fetch_add(file.size.unwrap_or(0), Ordering::Relaxed);
                 Ok::<_, Error>(())
             })
             .buffer_unordered(INSTALL_CONCURRENCY);

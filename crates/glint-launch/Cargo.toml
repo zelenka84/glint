@@ -7,15 +7,17 @@ license.workspace = true
 
 [dependencies]
 glint-auth.workspace = true
+glint-core.workspace = true
+glint-java.workspace = true
 glint-meta.workspace = true
+reqwest.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
-glint-core.workspace = true
-glint-java.workspace = true
 glint-net.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

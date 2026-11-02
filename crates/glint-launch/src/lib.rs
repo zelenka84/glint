@@ -6,11 +6,15 @@
 
 mod args;
 mod assets;
+mod log;
 mod natives;
 mod process;
+mod session;
 
 pub use args::{LaunchCommand, LaunchOptions, build_command};
+pub use log::{LogEntry, LogParser};
 pub use process::{GameProcess, LogLine, LogStream, spawn};
+pub use session::{Download, PlayError, PlayEvent, PlayRequest, play};
 
 use std::path::{Path, PathBuf};
 
