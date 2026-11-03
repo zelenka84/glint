@@ -27,7 +27,8 @@
         "enable": true,
         "scope": {
           "allow": [
-            "$DATA/Glint/instances/**"
+            "$DATA/Glint/instances/**",
+            "$DATA/Glint/media/**"
           ],
           "requireLiteralLeadingDot": false
         }

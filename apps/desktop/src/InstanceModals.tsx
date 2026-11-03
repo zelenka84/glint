@@ -1,8 +1,26 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { api, type Instance, type LoaderKind, type LoaderVersion, type NewInstance, type VersionList } from "./api";
-import { B3D, Cover, type CoverName, Modal, covers } from "./ui";
+import { B3D, Cover, type CoverName, Icon, Modal, covers, coverFor, isCustomCover, pickImage } from "./ui";
 
-export function CoverPicker({ value, onChange }: { value: CoverName; onChange: (c: CoverName) => void }) {
+export function CoverPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const custom = isCustomCover(value);
+
+  async function upload() {
+    const file = await pickImage();
+    if (!file) return;
+    setBusy(true);
+    try {
+      onChange(await api.importImage("cover", file));
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <fieldset className="cover-picker">
       <legend>Cover</legend>
@@ -18,6 +36,18 @@ export function CoverPicker({ value, onChange }: { value: CoverName; onChange: (
           <Cover cover={key} height={44} />
         </button>
       ))}
+      <button
+        type="button"
+        className={`cover-option cover-upload px2 ${custom ? "selected" : ""}`}
+        aria-pressed={custom}
+        aria-label={custom ? "Replace your picture" : "Use your own picture"}
+        title={custom ? "Replace your picture" : "Use your own picture"}
+        disabled={busy}
+        onClick={upload}
+      >
+        {custom ? <Cover cover={value} height={44} /> : <span className="cover-add"><Icon name="image" size={18} /></span>}
+      </button>
+      {error && <p className="error">{error}</p>}
     </fieldset>
   );
 }
@@ -87,7 +117,7 @@ export function NewInstanceModal({
   const [memory, setMemory] = useState(4096);
   const [jvmArgs, setJvmArgs] = useState("");
   const [advanced, setAdvanced] = useState(false);
-  const [cover, setCover] = useState<CoverName>("meadow");
+  const [cover, setCover] = useState<string>("meadow");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -234,13 +264,14 @@ export function EditInstanceModal({
 }) {
   const [name, setName] = useState(instance.name);
   const [memory, setMemory] = useState(instance.maxMemoryMb);
-  const [cover, setCover] = useState<CoverName>((instance.cover as CoverName) ?? "meadow");
+  const [cover, setCover] = useState(coverFor(instance.cover, instance.name));
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     try {
       await onSave({ name, maxMemoryMb: memory, cover });
+      if (isCustomCover(instance.cover) && instance.cover !== cover) api.deleteMedia(instance.cover).catch(() => {});
     } catch (err) {
       setError(String(err));
     }

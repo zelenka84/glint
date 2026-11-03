@@ -3,6 +3,7 @@ import { ElySignInModal, PlayerHead, accountKindLabel } from "./Accounts";
 import { api, type Accounts, type Instance, type LoaderKind, type VersionList } from "./api";
 import { SparkleMark, Wordmark } from "./Logo";
 import { scenes } from "./scenes";
+import { ColourRow } from "./AppearancePanel";
 import { type Appearance, fonts, sceneFor, themes, type ThemeName } from "./theme";
 import { B3D, Cover, type CoverName, Icon } from "./ui";
 
@@ -143,15 +144,15 @@ function Look({ appearance, onAppearance }: { appearance: Appearance; onAppearan
   return (
     <>
       <h2 className="pix">Pick a look</h2>
-      <p className="muted small">The backdrop follows the theme. You can change both later in Settings.</p>
+      <p className="muted small">The backdrop follows the theme. Settings has more: your own colours, a background picture and the interface size.</p>
       <span className="label pix">THEME</span>
       <div className="theme-grid">
         {(Object.keys(themes) as ThemeName[]).map((key) => (
           <button
             key={key}
-            className={`theme-option px2 ${appearance.theme === key ? "selected" : ""}`}
-            aria-pressed={appearance.theme === key}
-            onClick={() => onAppearance({ ...appearance, theme: key })}
+            className={`theme-option px2 ${appearance.theme === key && !appearance.tint ? "selected" : ""}`}
+            aria-pressed={appearance.theme === key && !appearance.tint}
+            onClick={() => onAppearance({ ...appearance, theme: key, accent: null, tint: null })}
           >
             <span className="swatch px2" style={{ background: themes[key].swatch }}>
               <span style={{ background: themes[key].vars.accent }} />
@@ -160,6 +161,8 @@ function Look({ appearance, onAppearance }: { appearance: Appearance; onAppearan
           </button>
         ))}
       </div>
+      <span className="label pix">ACCENT</span>
+      <ColourRow label="Accent colour" value={appearance.accent} noneLabel="Theme" onChange={(accent) => onAppearance({ ...appearance, accent })} />
       <span className="label pix">DISPLAY FONT</span>
       <div className="ob-fonts">
         {fonts.map((f) => (

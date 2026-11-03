@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { Accounts, Instance } from "./api";
 import { scenes, type SceneName } from "./scenes";
 import type { Session } from "./session";
-import { B3D, Cover, Icon, XpBar, coverFor, relativeTime } from "./ui";
+import type { Background } from "./theme";
+import { B3D, Cover, Icon, Photo, XpBar, coverFor, relativeTime } from "./ui";
 
 type Props = {
   scene: SceneName;
+  background: Background;
   instances: Instance[];
   selected: Instance | null;
   accounts: Accounts | null;
@@ -70,7 +72,11 @@ export function Home(props: Props) {
   return (
     <div className="screen home">
       <section className="hero px4">
-        <div key={props.scene} className="scene" dangerouslySetInnerHTML={{ __html: scenes[props.scene] }} />
+        {props.background.image ? (
+          <Photo key={props.background.image} background={{ ...props.background, image: props.background.image }} className="scene" />
+        ) : (
+          <div key={props.scene} className="scene" dangerouslySetInnerHTML={{ __html: scenes[props.scene] }} />
+        )}
         <div key={selected?.name} className="plaque px4">
           {selected ? (
             <>

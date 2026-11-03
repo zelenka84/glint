@@ -12,7 +12,7 @@ import { SparkleMark, Wordmark } from "./Logo";
 import { applyEvent, type Session } from "./session";
 import { Settings } from "./Settings";
 import { sceneFor, useAppearance } from "./theme";
-import { Icon, type IconName } from "./ui";
+import { Icon, type IconName, Photo, isCustomCover } from "./ui";
 import "./fonts";
 import "./App.css";
 
@@ -132,6 +132,8 @@ function App() {
   }
 
   const active = accounts?.accounts.find((a) => a.uuid === accounts.active) ?? null;
+  const { background } = appearance;
+  const backdrop = background.image && background.everywhere ? { ...background, image: background.image } : null;
   const pageInstance = instances.find((i) => i.name === page.name) ?? null;
 
   function openInstance(name: string, tab: InstanceTab = "log") {
@@ -141,7 +143,8 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${backdrop ? "has-backdrop" : ""}`}>
+      {backdrop && <Photo key={backdrop.image} background={backdrop} className="app-backdrop" />}
       <TitleBar channel={info?.channel} />
       {tour ? (
         <Onboarding
@@ -203,6 +206,7 @@ function App() {
             {screen === "home" && (
               <Home
                 scene={sceneFor(appearance.theme)}
+                background={background}
                 instances={instances}
                 selected={selected}
                 accounts={accounts}
@@ -323,6 +327,7 @@ function App() {
           onClose={() => setDialog(null)}
           onDelete={async () => {
             await api.deleteInstance(dialog.instance.name);
+            if (isCustomCover(dialog.instance.cover)) api.deleteMedia(dialog.instance.cover).catch(() => {});
             await refreshInstances();
             setDialog(null);
             if (screen === "instance" && page.name === dialog.instance.name) setScreen("library");

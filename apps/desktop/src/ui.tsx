@@ -1,5 +1,6 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { type Background, mediaUrl } from "./theme";
 
 type ButtonProps = {
   children: ReactNode;
@@ -159,16 +160,22 @@ export const covers = {
 
 export type CoverName = keyof typeof covers;
 
-export function coverFor(name: string | null, fallbackKey: string): CoverName {
-  if (name && name in covers) return name as CoverName;
+/** A preset name, or a picture the user added: a reference into Glint's media folder. */
+export const isCustomCover = (cover: string | null): cover is string => !!cover && cover.includes("/");
+
+export function coverFor(name: string | null, fallbackKey: string): string {
+  if (name && (name in covers || isCustomCover(name))) return name;
   const keys = Object.keys(covers) as CoverName[];
   let hash = 0;
   for (const ch of fallbackKey) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   return keys[hash % keys.length];
 }
 
-export function Cover({ cover, height = 92 }: { cover: CoverName; height?: number }) {
-  const c = covers[cover];
+export function Cover({ cover, height = 92 }: { cover: string; height?: number }) {
+  if (!(cover in covers)) {
+    return <img className="cover photo-cover" style={{ height }} src={mediaUrl(cover)} alt="" draggable={false} />;
+  }
+  const c = covers[cover as CoverName];
   return (
     <svg className="cover" style={{ height }} viewBox="0 0 48 24" preserveAspectRatio="xMidYMid slice" shapeRendering="crispEdges" aria-hidden="true">
       <rect width="48" height="24" fill={c.sky} />
@@ -180,6 +187,33 @@ export function Cover({ cover, height = 92 }: { cover: CoverName; height?: numbe
       <rect x="30" y="12" width="4" height="1" fill="#fff" opacity="0.3" />
     </svg>
   );
+}
+
+/** The user's background picture with its blur, dim and focal point. */
+export function Photo({ background, className = "" }: { background: Background & { image: string }; className?: string }) {
+  const { image, blur, dim, x, y } = background;
+  return (
+    <div className={`photo ${className}`} style={{ "--dim": `${dim}%` } as CSSProperties} aria-hidden="true">
+      <img
+        src={mediaUrl(image)}
+        alt=""
+        draggable={false}
+        style={{ objectPosition: `${x}% ${y}%`, filter: blur ? `blur(${blur}px)` : undefined, transform: blur ? `scale(${1 + blur * 0.006})` : undefined }}
+      />
+    </div>
+  );
+}
+
+/** Opens the system file picker for one image and hands back the file. */
+export function pickImage(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/gif,image/webp,image/bmp";
+    input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.oncancel = () => resolve(null);
+    input.click();
+  });
 }
 
 export function formatBytes(bytes: number): string {

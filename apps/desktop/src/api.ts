@@ -197,6 +197,14 @@ export const api = {
   openLibrariesFolder: () => invoke<void>("open_libraries_folder"),
   openGameFolder: (instance: string, folder: string) => invoke<void>("open_game_subfolder", { instance, folder }),
 
+  loadAppearance: () => invoke<{ data: unknown; mediaDir: string }>("load_appearance"),
+  saveAppearance: (data: unknown) => invoke<void>("save_appearance", { data }),
+  /** Copies an image into Glint's media folder; resolves to a reference like `covers/17.png`. */
+  importImage: async (kind: "background" | "cover", file: Blob) =>
+    invoke<string>("import_image", new Uint8Array(await file.arrayBuffer()), { headers: { "x-glint-kind": kind } }),
+  deleteMedia: (image: string) => invoke<void>("delete_media", { image }),
+  exportTheme: (name: string, contents: string) => invoke<string>("export_theme", { name, contents }),
+
   play: (instance: string, target?: PlayTarget) => invoke<void>("play", { instance, target: target ?? null }),
   killInstance: (name: string) => invoke<void>("kill_instance", { name }),
   onPlayEvent: (handler: (event: PlayEnvelope) => void): Promise<UnlistenFn> =>

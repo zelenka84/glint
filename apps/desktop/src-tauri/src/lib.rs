@@ -1,5 +1,6 @@
 //! Thin Tauri layer: commands translate between the UI and the `glint-*` crates.
 
+mod appearance;
 mod gamedir;
 mod settings;
 
@@ -904,7 +905,12 @@ pub fn run() {
             settings::instance_settings,
             settings::save_instance_settings,
             settings::detect_java,
-            settings::check_java
+            settings::check_java,
+            appearance::load_appearance,
+            appearance::save_appearance,
+            appearance::import_image,
+            appearance::delete_media,
+            appearance::export_theme
         ])
         .run(tauri::generate_context!())
         .expect("error while running Glint");

@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { api, type Instance, type InstanceSettings, type JavaInstall, type World } from "../api";
 import { CoverPicker } from "../InstanceModals";
-import { B3D, type CoverName, Icon, Switch, coverFor } from "../ui";
+import { B3D, Icon, Switch, coverFor, isCustomCover } from "../ui";
 
 const JVM_PRESETS: { label: string; hint: string; args: string }[] = [
   {
@@ -72,6 +72,8 @@ export function SettingsTab({ instance, onChanged, onDelete }: {
     setSaving(true);
     try {
       const name = await api.saveInstanceSettings(instance.name, draft);
+      // A replaced picture is no longer used anywhere.
+      if (isCustomCover(saved?.cover ?? null) && saved!.cover !== draft.cover) api.deleteMedia(saved!.cover!).catch(() => {});
       const fresh = { ...draft, name };
       setSaved(fresh);
       setDraft(fresh);
@@ -123,7 +125,7 @@ export function SettingsTab({ instance, onChanged, onDelete }: {
           <span>Name</span>
           <input className="input px2" value={draft.name} maxLength={48} onChange={(e) => set({ name: e.target.value })} />
         </label>
-        <CoverPicker value={coverFor(draft.cover, instance.name)} onChange={(c: CoverName) => set({ cover: c })} />
+        <CoverPicker value={coverFor(draft.cover, instance.name)} onChange={(c) => set({ cover: c })} />
       </Section>
 
       <Section title="Memory" hint="How much RAM the game may use. More than 8 GB rarely helps unless the modpack is huge.">

@@ -28,7 +28,7 @@
   --chip: #24252b;
   --chip-fg: #dad8d2;
   --overlay: rgba(0, 0, 0, 0.6);
-  --display-font: "Pixelify Sans";
+  --display-font: "Unbounded";
   /* Motion. Pixel-art effects (stars, glints, the XP bar) step on purpose;
      everything else in the interface moves on these smooth curves. */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -1332,10 +1332,15 @@ input[type="range"],
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  :root:not([data-motion="full"]) * {
     animation: none !important;
     transition: none !important;
   }
+}
+
+:root[data-motion="off"] * {
+  animation: none !important;
+  transition: none !important;
 }
 
 /* ---- mod loaders in the new-instance dialog ---- */
@@ -1571,8 +1576,8 @@ input[type="range"],
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .theming,
-  .theming * {
+  .theming:not([data-motion="full"]),
+  .theming:not([data-motion="full"]) * {
     transition: none !important;
   }
 }
@@ -2976,4 +2981,491 @@ input[type="range"],
   .ob-mark svg {
     animation: none;
   }
+}
+
+/* ---- appearance: corners, sidebar, background pictures ---- */
+
+:root[data-corners="round"] .px4 {
+  clip-path: inset(0 round 8px);
+}
+
+:root[data-corners="round"] .px2 {
+  clip-path: inset(0 round 4px);
+}
+
+:root[data-corners="square"] :is(.px4, .px2) {
+  clip-path: none;
+}
+
+.sidebar {
+  transition: width var(--t-slow) var(--ease), padding var(--t-slow) var(--ease);
+}
+
+:root[data-sidebar="compact"] .sidebar {
+  width: 72px;
+  padding-inline: 12px;
+}
+
+:root[data-sidebar="compact"] .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+:root[data-sidebar="compact"] :is(.nav-item .grow, .nav-item .soon, .account-text) {
+  display: none;
+}
+
+:root[data-sidebar="compact"] .account-card {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.photo {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.photo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  transition: filter var(--t) var(--ease), transform var(--t) var(--ease), object-position var(--t) var(--ease);
+}
+
+/* Dims towards the theme background, so it works on light and dark themes alike. */
+.photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) var(--dim), transparent);
+}
+
+.photo-cover {
+  object-fit: cover;
+}
+
+.app {
+  isolation: isolate;
+}
+
+.app-backdrop {
+  position: fixed;
+  z-index: -1;
+  animation: fade var(--t-slow) var(--ease);
+}
+
+/* With the picture behind the window, the Home hero looks through to it. */
+.has-backdrop .hero {
+  background: transparent;
+}
+
+.has-backdrop .hero > .photo {
+  display: none;
+}
+
+.cover-picker {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.cover-picker .error {
+  grid-column: 1 / -1;
+}
+
+.cover-upload .cover-add {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card);
+  color: var(--muted);
+  transition: color var(--t) var(--ease);
+}
+
+.cover-upload:hover .cover-add {
+  color: var(--accent);
+}
+
+/* ---- settings: appearance panel ---- */
+
+.look-head,
+.look-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.look-label {
+  justify-content: space-between;
+}
+
+.link.small,
+.link:disabled {
+  font-size: 12px;
+}
+
+.link:disabled {
+  color: var(--muted);
+  text-decoration: none;
+  opacity: 0.6;
+}
+
+.look-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+
+.look-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.look-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.look-aside {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.theme-grid.wide {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.theme-tile {
+  position: relative;
+  min-width: 0;
+}
+
+.theme-tile .theme-option {
+  width: 100%;
+}
+
+.tile-actions {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: flex;
+  translate: 0 -50%;
+  opacity: 0;
+  transition: opacity var(--t) var(--ease);
+}
+
+.tile-actions .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
+.theme-tile:hover .tile-actions,
+.theme-tile:focus-within .tile-actions {
+  opacity: 1;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-theme {
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--line);
+}
+
+.save-theme:hover {
+  color: var(--text);
+}
+
+.save-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: pop var(--t) var(--ease);
+}
+
+.save-form .input {
+  min-width: 0;
+  flex: 1;
+  height: 44px;
+}
+
+.colour-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.colour-none {
+  height: 28px;
+  padding: 0 10px;
+  background: var(--card);
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+}
+
+.colour-none:hover {
+  background: var(--raise);
+}
+
+.colour-none.selected {
+  box-shadow: inset 0 0 0 2px var(--accent);
+  color: var(--text);
+}
+
+.colour-dot {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform var(--t) var(--spring), box-shadow var(--t) var(--ease);
+}
+
+.colour-dot:hover {
+  transform: translateY(-2px);
+}
+
+.colour-dot:active {
+  transform: scale(0.9);
+  transition-duration: 60ms;
+}
+
+/* A ring in the page colour inside a ring in the text colour reads on any swatch. */
+.colour-dot.selected {
+  box-shadow: inset 0 0 0 2px var(--text), inset 0 0 0 4px var(--panel);
+}
+
+.colour-custom {
+  background: conic-gradient(from 90deg, #ff5c5c, #ffc24b, #4fd27a, #5ce1e6, #4a7dff, #b48cff, #ff5c5c);
+  color: #fff;
+}
+
+.colour-custom svg {
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.6));
+}
+
+.colour-custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.input.hex {
+  width: 92px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.bg-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  animation: rise var(--t) var(--ease);
+}
+
+.bg-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.bg-sliders .slider {
+  align-self: stretch;
+}
+
+.focus-picker {
+  position: relative;
+  justify-self: start;
+  max-width: 100%;
+  line-height: 0;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.focus-picker img {
+  max-width: 100%;
+  max-height: 160px;
+  display: block;
+}
+
+.focus-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  translate: -50% -50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  transition: left var(--t-fast) var(--ease), top var(--t-fast) var(--ease);
+}
+
+.look-options {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.look-options .segmented {
+  background: var(--card);
+}
+
+/* The preview: a pocket-sized launcher drawn with the live theme variables. */
+.look-preview {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  gap: 6px;
+  height: 200px;
+  padding: 8px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 2px var(--line);
+  overflow: hidden;
+}
+
+.lp-backdrop {
+  z-index: -1;
+}
+
+.lp-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 36px;
+  transition: width var(--t-slow) var(--ease);
+}
+
+:root[data-sidebar="compact"] .lp-side {
+  width: 14px;
+}
+
+.lp-nav {
+  height: 10px;
+  background: var(--raise);
+  opacity: 0.6;
+}
+
+.lp-nav.on {
+  opacity: 1;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.lp-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lp-hero {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  padding: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.look-preview:has(.lp-backdrop) .lp-hero {
+  background: transparent;
+}
+
+.look-preview:has(.lp-backdrop) .lp-hero > .photo {
+  display: none;
+}
+
+.lp-plaque {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  background: var(--plaque);
+}
+
+.lp-eyebrow {
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: var(--accent-ink);
+}
+
+.lp-title {
+  font-size: 15px;
+  color: var(--text);
+}
+
+.lp-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.lp-play {
+  padding: 3px 10px;
+  background: var(--play);
+  color: var(--on-play);
+  font-size: 9px;
+  box-shadow: inset 0 -2px 0 var(--play-edge);
+}
+
+.lp-chip {
+  padding: 2px 6px;
+  background: var(--chip);
+  color: var(--chip-fg);
+  font-size: 8px;
+}
+
+.lp-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  height: 34px;
+}
+
+.lp-cards span {
+  background: var(--card);
+}
+
+.lp-cards .on {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+@media (max-width: 1100px) {
+  .look-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .look-aside {
+    position: static;
+    max-width: 360px;
+  }
+}
+
+.look-options .segmented button.on {
+  box-shadow: inset 0 -2px 0 var(--accent);
 }

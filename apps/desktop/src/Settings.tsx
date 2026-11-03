@@ -1,7 +1,8 @@
 import { type FormEvent, useState } from "react";
 import { ElySignInModal, PlayerHead, accountKindLabel } from "./Accounts";
 import type { Accounts, AppInfo } from "./api";
-import { type Appearance, fonts, themes, type ThemeName } from "./theme";
+import { AppearancePanel } from "./AppearancePanel";
+import type { Appearance } from "./theme";
 import { B3D, Icon } from "./ui";
 
 type Props = {
@@ -110,42 +111,7 @@ export function Settings(props: Props) {
         )}
       </section>
 
-      <section className="panel px4">
-        <h2 className="pix">Appearance</h2>
-        <span className="label pix">THEME</span>
-        <div className="theme-grid">
-          {(Object.keys(themes) as ThemeName[]).map((key) => (
-            <button
-              key={key}
-              className={`theme-option px2 ${appearance.theme === key ? "selected" : ""}`}
-              aria-pressed={appearance.theme === key}
-              onClick={() => props.onAppearance({ ...appearance, theme: key })}
-            >
-              <span className="swatch px2" style={{ background: themes[key].swatch }}>
-                <span style={{ background: themes[key].vars.accent }} />
-              </span>
-              {themes[key].name}
-            </button>
-          ))}
-        </div>
-        <span className="label pix">DISPLAY FONT</span>
-        <div className="font-list">
-          {fonts.map((f) => (
-            <button
-              key={f.id}
-              className={`font-option px2 ${appearance.font === f.id ? "selected" : ""}`}
-              aria-pressed={appearance.font === f.id}
-              onClick={() => props.onAppearance({ ...appearance, font: f.id })}
-            >
-              <span className="font-sample" style={{ fontFamily: `${f.family}, monospace` }}>
-                Play
-              </span>
-              <span className="grow">{f.name}</span>
-              {appearance.font === f.id && <Icon name="check" size={12} />}
-            </button>
-          ))}
-        </div>
-      </section>
+      <AppearancePanel appearance={appearance} onAppearance={props.onAppearance} />
 
       <section className="panel px4">
         <h2 className="pix">About</h2>
