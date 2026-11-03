@@ -13,3 +13,6 @@ dist/
 
 # Russian copies of docs, kept locally
 *_RUS.*
+
+# Project website, kept locally
+site/

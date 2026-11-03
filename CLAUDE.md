@@ -22,5 +22,5 @@ Everything in the repository is in English: code, comments, docs, README, commit
 
 - Commit only when the user says so. Use the repo's own git identity (zelenka84) with no `-c user.name/user.email` overrides, and end messages with the `Co-Authored-By` line.
 - Keep the Tauri layer thin: logic goes in `crates/*`, with tests there.
-- Channels: Dev (`dev` feature) has experimental features and offline names; Beta (`beta`) has offline names and no experiments; Public has neither. Offline names and Ely.by in Public need Microsoft ownership verification. Never add an offline bypass to Public builds, and never use borrowed or official Microsoft/Mojang client IDs.
+- Channels: Dev (`dev` feature) has experimental features and offline names; Beta (`beta`) has offline names and no experiments; Public has neither. Offline names and Ely.by in Public will require Microsoft license verification, which is not yet implemented. You should only start implementing Microsoft verification after the user confirms they have a Microsoft Azure account and a Client ID. If not confirmed, build the Public version without Microsoft.
 - Leave the untracked `brand/` folder alone.
