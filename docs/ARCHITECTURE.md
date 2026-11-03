@@ -1,202 +1,202 @@
-# Архитектура Glint
+# Glint architecture
 
-Glint — open-source лаунчер для Minecraft (планируемая лицензия GPL-3.0): инстансы как в Prism, встроенный каталог Modrinth и CurseForge, поддержка Rust-движка Horizon, инструменты для создания модов (Glint Studio) и вход к другу в мир (Glint Link). Платных функций нет.
+Glint is an open-source Minecraft launcher (planned license GPL-3.0). It has instances like Prism, a built-in Modrinth and CurseForge catalogue, support for the Horizon Rust engine, tools for making mods (Glint Studio), and joining a friend's world (Glint Link). There are no paid features.
 
-Платформы: сначала Windows, затем Linux.
+Platforms: Windows first, then Linux.
 
-## 1. Общая схема
+## 1. Overview
 
 ```
 ┌───────────────────────────── Glint Desktop (Tauri 2) ─────────────────────────────┐
-│  Фронт: React + TS                                                                 │
-│  экраны · дизайн-система · центр задач · i18n                                     │
-│                │  команды (запрос → ответ)        ▲  события (прогресс, логи)      │
+│  Frontend: React + TS                                                              │
+│  screens · design system · task centre · i18n                                     │
+│                │  commands (request → response)   ▲  events (progress, logs)       │
 │                ▼                                  │                                │
-│  Бэкенд: Rust (tokio)                                                              │
+│  Backend: Rust (tokio)                                                             │
 │  auth · meta · java · content · instance · engine · launch · link · studio · cloud│
 └──────┬──────────────┬───────────────┬───────────────┬──────────────┬──────────────┘
        ▼              ▼               ▼               ▼              ▼
-   Microsoft /    Mojang meta,    Modrinth /      Glint API      Другой лаунчер
-   Xbox / MC      Fabric, Forge…  CurseForge      (аккаунты,     (P2P через iroh)
-                                                  друзья)
+   Microsoft /    Mojang meta,    Modrinth /      Glint API      Another launcher
+   Xbox / MC      Fabric, Forge…  CurseForge      (accounts,     (P2P over iroh)
+                                                  friends)
 ```
 
-## 2. Монорепозиторий
+## 2. Monorepo
 
-| Путь | Что внутри |
+| Path | Contents |
 |---|---|
-| `apps/desktop` | Tauri-приложение: `src-tauri` (тонкий слой команд) и фронт |
-| `crates/glint-core` | Общие модели (инстанс, версия, аккаунт), пути, конфиг, типы ошибок |
-| `crates/glint-net` | HTTP-клиент и менеджер загрузок |
-| `crates/glint-auth` | Microsoft → Xbox → XSTS → Minecraft, хранение токенов |
-| `crates/glint-meta` | Манифесты Mojang и загрузчиков, приведённые к единому формату |
-| `crates/glint-java` | Поиск и установка Java |
-| `crates/glint-content` | Провайдеры Modrinth и CurseForge, резолвер зависимостей, модпаки |
-| `crates/glint-instance` | Инстансы, lock-файл, снапшоты, импорт из других лаунчеров |
-| `crates/glint-engine` | Абстракция движка: Java и (позже) Horizon |
-| `crates/glint-launch` | Запуск процесса, поток логов, анализатор крашей |
-| `crates/glint-link` | P2P-туннель, перехват LAN-анонсов, Quick Play |
-| `crates/glint-studio` | Шаблоны модов, сборка, публикация |
-| `crates/glint-cloud` | Клиент Glint API |
-| `crates/glint-proto` | Общие типы для лаунчера и бэкенда |
-| `services/glint-api` | Бэкенд аккаунтов и друзей |
+| `apps/desktop` | Tauri app: `src-tauri` (thin command layer) and the frontend |
+| `crates/glint-core` | Shared models (instance, version, account), paths, config, error types |
+| `crates/glint-net` | HTTP client and download manager |
+| `crates/glint-auth` | Microsoft → Xbox → XSTS → Minecraft, token storage |
+| `crates/glint-meta` | Mojang and loader manifests, normalised to one format |
+| `crates/glint-java` | Finding and installing Java |
+| `crates/glint-content` | Modrinth and CurseForge providers, dependency resolver, modpacks |
+| `crates/glint-instance` | Instances, lock file, snapshots, import from other launchers |
+| `crates/glint-engine` | Engine abstraction: Java and (later) Horizon |
+| `crates/glint-launch` | Process launch, log stream, crash analyser |
+| `crates/glint-link` | P2P tunnel, LAN announcement capture, Quick Play |
+| `crates/glint-studio` | Mod templates, builds, publishing |
+| `crates/glint-cloud` | Glint API client |
+| `crates/glint-proto` | Types shared by the launcher and the backend |
+| `services/glint-api` | Accounts and friends backend |
 
-Главное правило: **Tauri-слой тонкий.** Вся логика живёт в крейтах, которые не знают про Tauri. Их можно тестировать отдельно, а позже собрать из них CLI.
+The main rule: **the Tauri layer is thin.** All logic lives in crates that know nothing about Tauri. They can be tested on their own and later assembled into a CLI.
 
-## 3. Ключевые решения
+## 3. Key decisions
 
-### Связь фронта и бэкенда
-- **Команды Tauri** — для запросов («дай список инстансов», «найди мод»).
-- **События** — для всего долгого: прогресс загрузок, логи игры, статусы друзей.
-- **Типы генерируются автоматически** через `tauri-specta`: Rust-структуры превращаются в TypeScript-типы, рассинхрона между фронтом и бэкендом нет.
+### Frontend and backend
+- **Tauri commands** for requests ("list instances", "find a mod").
+- **Events** for anything long: download progress, game logs, friend statuses.
+- **Types are generated** with `tauri-specta`: Rust structs become TypeScript types, so the frontend and backend never drift apart.
 
-### Система задач
-Любая долгая операция (установка, обновление, импорт) — **задача** с id, прогрессом, отменой и понятной ошибкой. Во фронте есть «центр задач»; из него рисуется прогресс на кнопке «Играть» в виде полоски опыта.
+### Tasks
+Every long operation (install, update, import) is a **task** with an id, progress, cancellation and a clear error. The frontend has a task centre, which also drives the XP-bar progress on the Play button.
 
-### Менеджер загрузок
-- Ограничение параллельности: общее и отдельно на каждый хост (у Modrinth лимит запросов).
-- Проверка хешей SHA-1 и SHA-512, повторы с нарастающей задержкой, докачка.
-- **Кеш по хешу:** один и тот же файл никогда не скачивается дважды.
+### Download manager
+- Concurrency limits, overall and per host (Modrinth rate-limits requests).
+- SHA-1 and SHA-512 checks, retries with backoff, resumed downloads.
+- **Cache by hash:** the same file is never downloaded twice.
 
-### Хранение данных
+### Data storage
 
 ```
 %APPDATA%\Glint\
-├─ meta\          библиотеки, ассеты, версии: общие для всех инстансов
-├─ java\          установленные рантаймы
-├─ cache\         файлы модов по хешу, ответы API
+├─ meta\          libraries, assets, versions: shared by all instances
+├─ java\          installed runtimes
+├─ cache\         mod files by hash, API responses
 ├─ instances\
-│  └─ <имя>\
-│     ├─ instance.toml   что это за инстанс
-│     ├─ glint.lock      что именно в нём установлено
-│     ├─ snapshots\      точки отката
-│     └─ game\           папка игры (mods, saves, config…)
-└─ glint.db       SQLite: индексы, кеш поиска, метаданные аккаунтов
+│  └─ <name>\
+│     ├─ instance.toml   what this instance is
+│     ├─ glint.lock      exactly what is installed in it
+│     ├─ snapshots\      restore points
+│     └─ game\           the game folder (mods, saves, config…)
+└─ glint.db       SQLite: indexes, search cache, account metadata
 ```
 
-- **Источник правды — файлы, а не база.** Инстанс можно скопировать, заархивировать или положить в git. SQLite только ускоряет работу и при потере восстанавливается из файлов.
-- **`instance.toml`** описывает инстанс: движок, версию игры, загрузчик, Java, память, аргументы.
-- **`glint.lock`** фиксирует каждый мод: источник (Modrinth, CurseForge, локальный файл), id проекта и версии, хеш. На нём держатся **шаринг инстанса**, **обновления**, **откат** и **«поставить сборку друга»** в Glint Link.
-- Моды кладутся в инстанс **жёсткими ссылками из кеша**: десять инстансов с Sodium занимают место одного.
+- **Files are the source of truth, not the database.** An instance can be copied, archived or put in git. SQLite only speeds things up and is rebuilt from the files if lost.
+- **`instance.toml`** describes the instance: engine, game version, loader, Java, memory, arguments.
+- **`glint.lock`** records every mod: source (Modrinth, CurseForge, local file), project and version id, hash. It is what **instance sharing**, **updates**, **rollback** and **"install my friend's setup"** in Glint Link rely on.
+- Mods go into an instance as **hard links from the cache**: ten instances with Sodium take the space of one.
 
-### Секреты
-- Refresh-токены Microsoft — в **Windows Credential Manager** через крейт `keyring`, не в файлах.
-- Ключ CurseForge подставляется **при сборке** из секретов CI и в репозиторий не попадает. Azure client ID не секретный.
+### Secrets
+- Microsoft refresh tokens go in the **Windows Credential Manager** via the `keyring` crate, not in files.
+- The CurseForge key is injected **at build time** from CI secrets and never enters the repository. The Azure client ID is not a secret.
 
-### Ошибки и логи
-- В крейтах типизированные ошибки (`thiserror`). В UI доходит **код ошибки и человеческий текст**, а не стектрейс.
-- `tracing` пишет логи в файл с ротацией. Кнопка «Скопировать отладочный отчёт» — для багрепортов.
+### Errors and logs
+- Crates use typed errors (`thiserror`). The UI gets an **error code and a human-readable message**, not a stack trace.
+- `tracing` writes rotating log files. A "Copy debug report" button helps with bug reports.
 
-## 4. Абстракция движка
+## 4. Engine abstraction
 
-У каждого движка четыре обязанности:
+Each engine has four responsibilities:
 
-| Шаг | Java | Horizon (экспериментально, только Dev) |
+| Step | Java | Horizon (experimental, Dev only) |
 |---|---|---|
-| **Подготовка** | Версия, библиотеки, ассеты, загрузчик, Java | Nightly-сборка Horizon (`glint-horizon`), файлы Minecraft 26.3, серверный jar и Java 25 для `horizon-prepare` |
-| **Контент** | jar-моды из Modrinth и CurseForge | Ресурспаки; моды `.hmod` позже (WASM в Horizon нет) |
-| **Аргументы запуска** | JVM-аргументы, classpath, аргументы игры | Launch API 0.1: только опции из `--launch-api`, сессия через stdin |
-| **Запуск** | `java` с аргументами | Нативный процесс |
+| **Prepare** | Version, libraries, assets, loader, Java | Horizon nightly build (`glint-horizon`), Minecraft 26.3 files, the server jar and Java 25 for `horizon-prepare` |
+| **Content** | jar mods from Modrinth and CurseForge | Resource packs; `.hmod` mods later (Horizon has no WASM) |
+| **Launch arguments** | JVM arguments, classpath, game arguments | Launch API 0.1: only the options from `--launch-api`, session over stdin |
+| **Run** | `java` with arguments | Native process |
 
-Остальной лаунчер (UI, инстансы, логи, Link) работает только с этим интерфейсом.
+The rest of the launcher (UI, instances, logs, Link) works only through this interface.
 
-## 5. Сценарий «Играть»
+## 5. The Play flow
 
 ```
-Играть
- → прочитать instance.toml и glint.lock
- → проверить Java                     (glint-java)
- → проверить файлы версии             (glint-meta + glint-net)
- → проверить загрузчик                (glint-meta)
- → сверить моды с lock-файлом         (glint-content)
- → обновить токен Microsoft           (glint-auth)
- → собрать аргументы                  (glint-engine)
- → запустить и стримить логи          (glint-launch)
- → при падении: анализ краша
+Play
+ → read instance.toml and glint.lock
+ → check Java                         (glint-java)
+ → check version files                (glint-meta + glint-net)
+ → check the loader                   (glint-meta)
+ → match mods against the lock file   (glint-content)
+ → refresh the Microsoft token        (glint-auth)
+ → build arguments                    (glint-engine)
+ → launch and stream logs             (glint-launch)
+ → on a crash: analyse it
 ```
 
-Каждая проверка **идемпотентна**: если всё на месте, шаг занимает миллисекунды, поэтому повторный запуск почти мгновенный.
+Every check is **idempotent**: when everything is in place a step takes milliseconds, so launching again is almost instant.
 
-## 6. Контент: Modrinth и CurseForge
+## 6. Content: Modrinth and CurseForge
 
-- Общий интерфейс провайдера: поиск, проект, версии, файлы, зависимости. Modrinth и CurseForge — две реализации.
-- **Объединённая выдача:** дубли склеиваются по хешу файла или slug, у результата значки обоих источников.
-- **Резолвер зависимостей:** подтягивает required, предупреждает о несовместимых модах, учитывает версию игры и загрузчик.
-- **Моды CurseForge без разрешения на распространение:** UX «скачай вручную» и слежение за папкой загрузок.
-- **Модпаки:** импорт и экспорт `.mrpack` и CurseForge zip, импорт инстансов из Prism, MultiMC, ATLauncher и официального лаунчера.
+- One provider interface: search, project, versions, files, dependencies. Modrinth and CurseForge are two implementations.
+- **Merged results:** duplicates are joined by file hash or slug, and the result shows both source badges.
+- **Dependency resolver:** pulls in required dependencies, warns about incompatible mods, respects the game version and loader.
+- **CurseForge mods that forbid redistribution:** a "download it yourself" flow that watches the downloads folder.
+- **Modpacks:** import and export of `.mrpack` and CurseForge zips; import of instances from Prism, MultiMC, ATLauncher and the official launcher.
 
 ## 7. Glint Link
 
 ```
-Хост                                           Гость
-игра: «Открыть для сети»
-  │ multicast-анонс (порт)
+Host                                           Guest
+game: "Open to LAN"
+  │ multicast announcement (port)
   ▼
-glint-link ловит анонс ──► Glint API: «Вася открыл мир» ──► статус у друзей
+glint-link catches it ──► Glint API: "Vasya opened a world" ──► status for friends
                                                              │
-                           ◄── запрос тикета ────────────────┤ «Присоединиться»
-                           ──► тикет + iroh-адрес хоста ────►│
+                           ◄── ticket request ───────────────┤ "Join"
+                           ──► ticket + host iroh address ──►│
                                                              ▼
-iroh-соединение ◄══════════ QUIC (P2P или relay) ═════════► iroh-соединение
+iroh connection ◄══════════ QUIC (P2P or relay) ═══════════► iroh connection
   │                                                          │
-127.0.0.1:<порт LAN>                              127.0.0.1:<локальный порт>
+127.0.0.1:<LAN port>                              127.0.0.1:<local port>
                                                              │
-                                      игра --quickPlayMultiplayer 127.0.0.1:<порт>
+                                      game --quickPlayMultiplayer 127.0.0.1:<port>
 ```
 
-- Хост принимает соединение только с **валидным одноразовым тикетом** от сервера.
-- Перед подключением гостю ставится инстанс хоста по его `glint.lock`.
-- Туннель копирует байты между TCP и QUIC и не разбирает протокол Minecraft, поэтому не ломается от обновлений игры.
-- LAN-мир лицензионного хоста проверяет лицензию подключающихся.
+- The host accepts a connection only with a **valid one-time ticket** from the server.
+- Before connecting, the guest gets the host's instance installed from its `glint.lock`.
+- The tunnel copies bytes between TCP and QUIC and does not parse the Minecraft protocol, so game updates don't break it.
+- A licensed host's LAN world checks the licence of everyone who joins.
 
-## 8. Бэкенд Glint API
+## 8. Glint API backend
 
-**Стек под нулевой бюджет:** Cloudflare Workers на Rust (`workers-rs`) + D1 (SQLite) + Durable Objects для онлайн-статусов через WebSocket + R2 для шаринга инстансов. При росте — Axum + Postgres на VPS; типы из `glint-proto` останутся теми же.
+**Stack for a zero budget:** Cloudflare Workers in Rust (`workers-rs`) + D1 (SQLite) + Durable Objects for online status over WebSocket + R2 for instance sharing. When it grows: Axum + Postgres on a VPS; the types from `glint-proto` stay the same.
 
-| Раздел | Что делает |
+| Area | What it does |
 |---|---|
-| **Вход** | Лаунчер один раз присылает токен Minecraft, сервер проверяет профиль у Mojang, **выбрасывает токен** и выдаёт свой |
-| **Друзья** | Заявки, список, блокировки |
-| **Статусы** | Онлайн, «играет в X», «открыл мир» |
-| **Тикеты Link** | Выдача одноразовых тикетов на подключение |
-| **Шаринг** | Загрузка `instance.toml` + `glint.lock`, короткий код для друга |
+| **Sign-in** | The launcher sends a Minecraft token once; the server checks the profile with Mojang, **discards the token** and issues its own |
+| **Friends** | Requests, list, blocking |
+| **Status** | Online, "playing X", "opened a world" |
+| **Link tickets** | Issues one-time join tickets |
+| **Sharing** | Uploads `instance.toml` + `glint.lock`, a short code for a friend |
 
-Сами моды на сервере не хранятся, только ссылки на Modrinth и CurseForge.
+The server never stores mods, only links to Modrinth and CurseForge.
 
-## 9. Фронтенд
+## 9. Frontend
 
-- **React + TS + Vite**, TanStack Router и Query, Zustand, Tailwind, Framer Motion.
-- **Дизайн-система отдельным пакетом:** токены (цвета, отступы, пиксельный шаг), компоненты на 9-slice, пиксельные иконки.
-- **i18n с первого дня** (ru и en).
-- **Оффлайн-устойчивость:** установленные инстансы запускаются без интернета, из кеша.
+- **React + TS + Vite**, TanStack Router and Query, Zustand, Tailwind, Framer Motion.
+- **Design system as its own package:** tokens (colours, spacing, pixel step), 9-slice components, pixel icons. The current design system is documented in `docs/DESIGN.md`.
+- **i18n from day one** (ru and en).
+- **Works offline:** installed instances launch without internet, from the cache.
 
-## 10. Тестирование
+## 10. Testing
 
-- **Юнит-тесты крейтов:** разбор манифестов, резолвер, сборка аргументов.
-- **Моки HTTP** (`wiremock`): тесты не ходят в настоящие API.
-- **Снапшот-тесты аргументов запуска** для набора версий (1.8, 1.12, 1.16, 1.20, 26.x).
-- **CI на GitHub Actions:** сборка под Windows, тесты, релиз в GitHub Releases по тегу.
+- **Crate unit tests:** manifest parsing, the resolver, argument building.
+- **HTTP mocks** (`wiremock`): tests never hit real APIs.
+- **Snapshot tests of launch arguments** for a set of versions (1.8, 1.12, 1.16, 1.20, 26.x).
+- **CI on GitHub Actions:** Windows build, tests, release to GitHub Releases on a tag.
 
-## 11. Порядок сборки этапа 1
+## 11. Stage 1 build order
 
-1. `glint-core` + `glint-net`: модели, пути, загрузчик файлов
-2. `glint-meta` + `glint-java`: ванильные версии и Java
-3. `glint-engine` (Java) + `glint-launch`: **первый запуск ванили**
-4. `glint-auth`: вход через Microsoft (после одобрения Mojang)
-5. `glint-instance`: несколько инстансов, `instance.toml` / `glint.lock`
-6. Оболочка Tauri и первые экраны
+1. `glint-core` + `glint-net`: models, paths, file downloader
+2. `glint-meta` + `glint-java`: vanilla versions and Java
+3. `glint-engine` (Java) + `glint-launch`: **first vanilla launch**
+4. `glint-auth`: Microsoft sign-in (after Mojang approval)
+5. `glint-instance`: several instances, `instance.toml` / `glint.lock`
+6. Tauri shell and the first screens
 
-Пока нет одобрения Mojang, запуск ванили отлаживается с офлайн-ником — это допустимо для собственной разработки.
+Until Mojang approves the app, vanilla launches are debugged with an offline name, which is acceptable for our own development.
 
-## Роадмап
+## Roadmap
 
-| Этап | Что входит |
+| Stage | What it includes |
 |---|---|
-| **0. Подготовка** | Заявка в Mojang, ключ CurseForge, лицензия, макет дизайна |
-| **1. Ядро** | Вход через Microsoft, инстансы, ванилла, автоустановка Java, абстракция движка |
-| **2. Моды** | Fabric/Quilt, каталог Modrinth, зависимости, обновления |
-| **3. Экосистема** | CurseForge, модпаки, импорт из Prism и других, Forge/NeoForge |
-| **3.5. Социальное** | Аккаунты Glint, друзья, статусы, шаринг инстансов, Glint Link |
-| **4. Glint Studio** | Шаблоны модов, тестовый запуск, публикация |
-| **5. Horizon** | Рантайм Horizon, WASM-моды, шаблон под Rust в Studio |
-| **6. Релиз** | Подпись кода, glnt.net, Linux |
+| **0. Groundwork** | Mojang application, CurseForge key, license, design mock-up |
+| **1. Core** | Microsoft sign-in, instances, vanilla, automatic Java, engine abstraction |
+| **2. Mods** | Fabric/Quilt, Modrinth catalogue, dependencies, updates |
+| **3. Ecosystem** | CurseForge, modpacks, import from Prism and others, Forge/NeoForge |
+| **3.5. Social** | Glint accounts, friends, status, instance sharing, Glint Link |
+| **4. Glint Studio** | Mod templates, test launches, publishing |
+| **5. Horizon** | Horizon runtime, WASM mods, a Rust template in Studio |
+| **6. Release** | Code signing, glnt.net, Linux |

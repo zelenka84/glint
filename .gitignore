@@ -10,3 +10,6 @@ Thumbs.db
 
 # Installers built by scripts/build.ps1
 dist/
+
+# Russian copies of docs, kept locally
+*_RUS.*
