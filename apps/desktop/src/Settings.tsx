@@ -16,6 +16,12 @@ type Props = {
   onTour: () => void;
 };
 
+const CHANNEL_NAMES: Record<AppInfo["channel"], string> = {
+  dev: "Dev, experimental features on",
+  beta: "Beta",
+  public: "Public",
+};
+
 export function Settings(props: Props) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +153,7 @@ export function Settings(props: Props) {
           <dt>Version</dt>
           <dd>
             {props.info?.version ?? "…"}
-            {props.info?.channel === "beta" ? " (beta)" : props.info?.devBuild ? " (development build)" : ""}
+            {props.info && ` · ${CHANNEL_NAMES[props.info.channel]}`}
           </dd>
           <dt>Data folder</dt>
           <dd>{props.info?.dataDir ?? "…"}</dd>

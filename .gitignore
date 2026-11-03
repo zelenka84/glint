@@ -8,5 +8,5 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Beta installers built by scripts/build-beta.ps1
-dist-beta/
+# Installers built by scripts/build.ps1
+dist/

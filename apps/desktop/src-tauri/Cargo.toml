@@ -32,9 +32,9 @@ tauri-plugin-opener = "2"
 tracing.workspace = true
 
 [features]
-# Personal build for testing with friends: offline names without a Microsoft check,
-# like a dev build, but packed into one exe (see scripts/install-local.ps1).
-local = []
-# Closed beta for invited testers: same rules as `local`, shipped as "Glint Beta"
-# with its own installer (see scripts/build-beta.ps1). Not for public downloads.
+# Release channels (see scripts/build.ps1). With neither feature it is the Public build.
+# Dev: for developers, with experimental features and offline names without a Microsoft check.
+dev = []
+# Beta: the more or less stable build for invited testers; no experiments, offline names
+# without a Microsoft check. Not for public downloads.
 beta = []

@@ -40,7 +40,7 @@ function TitleBar({ channel }: { channel: AppInfo["channel"] | undefined }) {
       <div className="brand" data-tauri-drag-region>
         <SparkleMark />
         <Wordmark />
-        {channel && channel !== "release" && <span className={`channel-badge pix px2 ${channel}`}>{channel.toUpperCase()}</span>}
+        {channel && channel !== "public" && <span className={`channel-badge pix px2 ${channel}`}>{channel.toUpperCase()}</span>}
       </div>
       <div className="window-controls">
         <button aria-label="Minimize" onClick={() => win.minimize()}>

@@ -105,7 +105,7 @@ export type JavaInstall = { path: string; version: string | null; source: string
 export type LogFile = { id: string; name: string; kind: "log" | "crash"; size: number; modified: number };
 export type PlayTarget = { world?: string; server?: string };
 
-export type AppInfo = { version: string; dataDir: string; devBuild: boolean; channel: "dev" | "beta" | "release" };
+export type AppInfo = { version: string; dataDir: string; channel: "dev" | "beta" | "public"; experimental: boolean };
 
 /** Mirrors `glint_launch::PlayEvent`, plus `failed` emitted by the desktop layer. */
 export type PlayEvent =

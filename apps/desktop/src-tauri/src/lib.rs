@@ -20,20 +20,23 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-/// Offline names need a verified game owner in public release builds only.
-const OFFLINE_POLICY: OfflinePolicy = if cfg!(any(debug_assertions, feature = "local", feature = "beta")) {
+/// Offline names need a verified game owner in Public builds only.
+const OFFLINE_POLICY: OfflinePolicy = if cfg!(any(debug_assertions, feature = "dev", feature = "beta")) {
     OfflinePolicy::Unrestricted
 } else {
     OfflinePolicy::RequireOwnership
 };
 
-/// Which build this is; shown in the title bar and Settings.
-const CHANNEL: &str = if cfg!(feature = "beta") {
-    "beta"
-} else if cfg!(any(debug_assertions, feature = "local")) {
+/// Dev builds turn on experimental features; Beta and Public leave them off.
+const EXPERIMENTAL: bool = cfg!(any(debug_assertions, feature = "dev"));
+
+/// Which build this is: "dev" for developers, "beta" for testers, "public" for everyone.
+const CHANNEL: &str = if EXPERIMENTAL {
     "dev"
+} else if cfg!(feature = "beta") {
+    "beta"
 } else {
-    "release"
+    "public"
 };
 
 /// Event name the UI listens to while games are installing or running.
@@ -807,8 +810,8 @@ fn open_content_folder(
 struct AppInfo {
     version: &'static str,
     data_dir: String,
-    dev_build: bool,
     channel: &'static str,
+    experimental: bool,
 }
 
 #[tauri::command]
@@ -816,8 +819,8 @@ fn app_info(state: State<'_, AppState>) -> AppInfo {
     AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         data_dir: state.paths.root().display().to_string(),
-        dev_build: cfg!(any(debug_assertions, feature = "local", feature = "beta")),
         channel: CHANNEL,
+        experimental: EXPERIMENTAL,
     }
 }
 

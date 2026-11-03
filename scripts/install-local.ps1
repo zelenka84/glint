@@ -4,8 +4,8 @@
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\install-local.ps1
 #
-# This is the "local" build: offline names work without a Microsoft check,
-# as in a dev build. Not for public releases.
+# This is the Dev build with your usual settings (same app identifier as Public):
+# experimental features on, offline names without a Microsoft check.
 
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
@@ -20,7 +20,7 @@ if ($running) {
 Push-Location (Join-Path $repo "apps\desktop")
 try {
     if (-not (Test-Path node_modules)) { npm install; if ($LASTEXITCODE) { throw "npm install failed" } }
-    npx tauri build --no-bundle --features local
+    npx tauri build --no-bundle --features dev
     if ($LASTEXITCODE) { throw "Build failed" }
 } finally {
     Pop-Location
