@@ -2702,3 +2702,278 @@ input[type="range"],
 .log-skeleton {
   height: max(360px, calc(100vh - 470px));
 }
+
+/* ---- build channel badge ---- */
+
+.channel-badge {
+  padding: 1px 6px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: var(--raise);
+  color: var(--muted);
+}
+
+.channel-badge.beta {
+  background: var(--warn);
+  color: var(--on-warn);
+}
+
+/* ---- onboarding ---- */
+
+.onboarding {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.onboarding .scene {
+  animation: scene-in 900ms var(--ease);
+}
+
+.ob-card {
+  position: relative;
+  width: 600px;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 26px 28px 24px;
+  overflow: auto;
+  background: var(--plaque);
+  backdrop-filter: blur(6px);
+  animation: drop var(--t-slow) var(--spring);
+}
+
+.ob-progress {
+  display: flex;
+  gap: 6px;
+}
+
+.ob-progress span {
+  flex: 1;
+  height: 6px;
+  background: var(--line);
+  transition: background-color var(--t-slow) var(--ease);
+}
+
+.ob-progress span.on {
+  background: var(--accent);
+}
+
+.ob-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ob-step > * {
+  animation: ob-in var(--t-slow) var(--ease) backwards;
+}
+
+.ob-step.back > * {
+  animation-name: ob-in-back;
+}
+
+.ob-step > :nth-child(2) { animation-delay: 40ms; }
+.ob-step > :nth-child(3) { animation-delay: 80ms; }
+.ob-step > :nth-child(4) { animation-delay: 120ms; }
+.ob-step > :nth-child(5) { animation-delay: 160ms; }
+.ob-step > :nth-child(n + 6) { animation-delay: 200ms; }
+
+@keyframes ob-in {
+  from { transform: translateX(24px); opacity: 0; }
+}
+
+@keyframes ob-in-back {
+  from { transform: translateX(-24px); opacity: 0; }
+}
+
+.ob-step h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.ob-step p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ob-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0 4px;
+  text-align: center;
+}
+
+.ob-hero > * {
+  animation: rise var(--t-slow) var(--ease) backwards;
+}
+
+.ob-hero > :nth-child(2) { animation-delay: 80ms; }
+.ob-hero > :nth-child(3) { animation-delay: 160ms; }
+.ob-hero > :nth-child(4) { animation-delay: 220ms; }
+.ob-hero > :nth-child(5) { animation-delay: 280ms; }
+
+.ob-mark {
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+
+.ob-mark svg {
+  animation: ob-float 3.2s ease-in-out infinite;
+}
+
+@keyframes ob-float {
+  50% { transform: translateY(-6px) rotate(4deg); }
+}
+
+.ob-lead {
+  font-size: 17px;
+  color: var(--text);
+}
+
+.ob-hero-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.ob-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.ob-fonts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+}
+
+.ob-font {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card);
+  font-size: 18px;
+  transition: background-color var(--t) var(--ease), box-shadow var(--t) var(--ease), transform var(--t) var(--spring);
+  animation: pop var(--t-slow) var(--ease) backwards;
+}
+
+.ob-font:hover {
+  background: var(--raise);
+  transform: translateY(-2px);
+}
+
+.ob-font:active {
+  transform: scale(0.95);
+  transition-duration: 60ms;
+}
+
+.ob-font.selected {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.ob-or {
+  text-align: center;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.ob-starters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ob-starter {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  text-align: left;
+  overflow: hidden;
+  transition: transform var(--t) var(--spring), box-shadow var(--t) var(--ease), background-color var(--t) var(--ease);
+  animation: pop var(--t-slow) var(--ease) backwards;
+}
+
+.ob-starter:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.ob-starter:hover:not(:disabled) {
+  transform: translateY(-3px);
+  background: var(--raise);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.ob-starter:active:not(:disabled) {
+  transform: scale(0.98);
+  transition-duration: 60ms;
+}
+
+.ob-starter:disabled:not(.busy) {
+  opacity: 0.55;
+}
+
+.ob-starter.busy {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.ob-starter.busy .muted {
+  animation: blink 0.8s steps(2) infinite;
+}
+
+.ob-starter-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px 14px;
+}
+
+.ob-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.ob-summary li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  animation: rise var(--t-slow) var(--ease) backwards;
+}
+
+.ob-summary li:nth-child(2) { animation-delay: 80ms; }
+.ob-summary li:nth-child(3) { animation-delay: 160ms; }
+
+.ob-summary li.ok {
+  color: var(--text);
+}
+
+.ob-summary li.ok svg {
+  color: var(--ok);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-mark svg {
+    animation: none;
+  }
+}

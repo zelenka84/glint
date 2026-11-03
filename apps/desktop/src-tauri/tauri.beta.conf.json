@@ -1,0 +1,20 @@
+{
+  "productName": "Glint Beta",
+  "identifier": "net.glnt.launcher.beta",
+  "app": {
+    "windows": [
+      {
+        "title": "Glint Beta",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "decorations": false,
+        "backgroundColor": "#0b0c0e"
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["nsis"]
+  }
+}

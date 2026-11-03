@@ -43,6 +43,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Glint",
+    "shortDescription": "Minecraft launcher with Modrinth built in",
+    "copyright": "Glint contributors, GPL-3.0-or-later",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }

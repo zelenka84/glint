@@ -13,6 +13,7 @@ type Props = {
   onElySignIn: (login: string, password: string, totp?: string) => Promise<void>;
   onRemove: (uuid: string) => void;
   onActivate: (uuid: string) => void;
+  onTour: () => void;
 };
 
 export function Settings(props: Props) {
@@ -43,7 +44,6 @@ export function Settings(props: Props) {
         <p className="muted small">
           Offline names play in single player, on LAN and on servers with online-mode off. Ely.by accounts add a
           password-protected nickname and a skin, and work on servers that use Ely.by.
-          {props.info?.devBuild ? " Development build: neither needs a Microsoft sign-in." : ""}
         </p>
         <ul className="account-list">
           {accounts?.accounts.map((a) => (
@@ -147,11 +147,16 @@ export function Settings(props: Props) {
           <dt>Version</dt>
           <dd>
             {props.info?.version ?? "…"}
-            {props.info?.devBuild ? " (development build)" : ""}
+            {props.info?.channel === "beta" ? " (beta)" : props.info?.devBuild ? " (development build)" : ""}
           </dd>
           <dt>Data folder</dt>
           <dd>{props.info?.dataDir ?? "…"}</dd>
         </dl>
+        <div className="row">
+          <button className="link" onClick={props.onTour}>
+            Show the welcome tour again
+          </button>
+        </div>
       </section>
     </div>
   );
