@@ -5,7 +5,10 @@
 mod api;
 mod lock;
 
-pub use api::{Hit, ModrinthApi, Project, ProjectType, SearchQuery, SearchResults, Version};
+pub use api::{
+    GalleryImage, Hit, License, ModrinthApi, Project, ProjectDetails, ProjectType, SearchQuery,
+    SearchResults, Version,
+};
 pub use lock::{LOCK_FILE, Lock, LockedMod, ModSource};
 
 use std::collections::HashSet;
@@ -124,6 +127,66 @@ fn shader_mod(loader: LoaderKind) -> &'static str {
     }
 }
 
+/// A project's page: details, versions for the instance and what comes with it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectPage {
+    pub project: ProjectDetails,
+    /// Versions for this instance's Minecraft version and loader, newest first.
+    pub versions: Vec<PageVersion>,
+    /// The version a plain install picks.
+    pub recommended: Option<String>,
+    /// Version id in the instance, when the project is installed.
+    pub installed_version: Option<String>,
+    /// Required ones install along with the project; optional ones are suggestions.
+    pub dependencies: Vec<PageDependency>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageVersion {
+    pub id: String,
+    pub name: String,
+    pub version_number: String,
+    pub version_type: String,
+    pub game_versions: Vec<String>,
+    pub loaders: Vec<String>,
+    pub date_published: String,
+    pub downloads: u64,
+    pub changelog: Option<String>,
+    pub filename: Option<String>,
+    pub size: u64,
+}
+
+impl From<&Version> for PageVersion {
+    fn from(v: &Version) -> Self {
+        let file = v.primary_file();
+        Self {
+            id: v.id.clone(),
+            name: v.name.clone(),
+            version_number: v.version_number.clone(),
+            version_type: v.version_type.clone(),
+            game_versions: v.game_versions.clone(),
+            loaders: v.loaders.clone(),
+            date_published: v.date_published.clone(),
+            downloads: v.downloads,
+            changelog: v.changelog.clone(),
+            filename: file.map(|f| f.filename.clone()),
+            size: file.map_or(0, |f| f.size),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageDependency {
+    pub project_id: String,
+    pub title: String,
+    pub icon_url: Option<String>,
+    pub required: bool,
+    pub installed: bool,
+}
+
 /// An item as the UI shows it: from the lock file, or a file dropped in by hand.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -189,10 +252,23 @@ impl<'a> ModManager<'a> {
     /// dependencies. Shader packs also get a shader loader mod when the instance
     /// has none. Returns the titles that were newly installed.
     pub async fn install(&self, project_id: &str, target: &Target) -> Result<Vec<String>> {
+        self.install_version(project_id, None, target).await
+    }
+
+    /// Like [`install`](Self::install), but with a chosen version of the project
+    /// instead of the newest compatible one.
+    pub async fn install_version(
+        &self,
+        project_id: &str,
+        version_id: Option<&str>,
+        target: &Target,
+    ) -> Result<Vec<String>> {
         if self.kind == ContentKind::Mod && target.loader.is_none() {
             return Err(Error::NeedsLoader);
         }
-        let mut installed = self.install_from(project_id, target, true, false).await?;
+        let mut installed = self
+            .install_from(project_id, version_id, target, true, false)
+            .await?;
         if self.kind == ContentKind::Shader
             && let Some(loader) = target.loader
         {
@@ -203,7 +279,7 @@ impl<'a> ModManager<'a> {
                 ContentKind::Mod,
             );
             match mods
-                .install_from(shader_mod(loader), target, false, true)
+                .install_from(shader_mod(loader), None, target, false, true)
                 .await
             {
                 Ok(extra) => installed.extend(extra),
@@ -216,7 +292,8 @@ impl<'a> ModManager<'a> {
 
     /// Moves something installed from Modrinth to its newest compatible version.
     pub async fn update(&self, project_id: &str, target: &Target) -> Result<Vec<String>> {
-        self.install_from(project_id, target, false, false).await
+        self.install_from(project_id, None, target, false, false)
+            .await
     }
 
     /// `explicit` installs mark the root project as chosen by the player rather than
@@ -225,13 +302,18 @@ impl<'a> ModManager<'a> {
     async fn install_from(
         &self,
         root: &str,
+        root_version: Option<&str>,
         target: &Target,
         explicit: bool,
         as_dependency: bool,
     ) -> Result<Vec<String>> {
         let mut lock = Lock::load(&self.lock_path())?;
         let mut installed = Vec::new();
-        let mut queue = vec![(root.to_owned(), None::<String>, as_dependency)];
+        let mut queue = vec![(
+            root.to_owned(),
+            root_version.map(str::to_owned),
+            as_dependency,
+        )];
         let mut seen = HashSet::new();
 
         while let Some((project, version_id, dependency)) = queue.pop() {
@@ -329,6 +411,67 @@ impl<'a> ModManager<'a> {
             lock.save(&self.lock_path())?;
         }
         Ok(installed)
+    }
+
+    /// What a project page needs: the project, its versions for this instance and
+    /// what installing it brings along.
+    pub async fn project_page(&self, project_id: &str, target: &Target) -> Result<ProjectPage> {
+        let project = self.api.project_details(project_id).await?;
+        let versions = if self.kind == ContentKind::Mod && target.loader.is_none() {
+            Vec::new()
+        } else {
+            self.api.versions(&project.id, target, self.kind).await?
+        };
+        let lock = Lock::load(&self.lock_path())?;
+        let best = ModrinthApi::pick_best(&versions);
+
+        let mut wanted: Vec<(String, bool)> = Vec::new();
+        for dep in best.map(|v| v.dependencies.as_slice()).unwrap_or_default() {
+            let required = match dep.dependency_type.as_str() {
+                "required" => true,
+                "optional" => false,
+                _ => continue,
+            };
+            let id = match (&dep.project_id, &dep.version_id) {
+                (Some(id), _) => id.clone(),
+                (None, Some(version)) => match self.api.version(version).await {
+                    Ok(v) if !v.project_id.is_empty() => v.project_id,
+                    _ => continue,
+                },
+                (None, None) => continue,
+            };
+            if !wanted.iter().any(|(w, _)| *w == id) {
+                wanted.push((id, required));
+            }
+        }
+        if self.kind == ContentKind::Shader
+            && let Some(loader) = target.loader
+        {
+            wanted.insert(0, (shader_mod(loader).to_owned(), true));
+        }
+
+        let mut dependencies = Vec::new();
+        for (id, required) in wanted {
+            let Ok(dep) = self.api.project(&id).await else {
+                continue;
+            };
+            let project_id = if dep.id.is_empty() { id } else { dep.id };
+            dependencies.push(PageDependency {
+                installed: lock.find_project(&project_id).is_some(),
+                project_id,
+                title: dep.title,
+                icon_url: dep.icon_url,
+                required,
+            });
+        }
+
+        Ok(ProjectPage {
+            recommended: best.map(|v| v.id.clone()),
+            versions: versions.iter().map(PageVersion::from).collect(),
+            installed_version: lock.find_project(&project.id).map(|m| m.version_id.clone()),
+            dependencies,
+            project,
+        })
     }
 
     /// Dependencies are always mods (a resource pack never requires another pack).

@@ -136,6 +136,12 @@ const ICONS = {
   seed: "M7 1h2v3H7zM5 4h6v2H5zM3 6h10v6H3zM5 12h6v2H5z",
   pin: "M6 1h4v2H6zM4 3h8v6H4zM7 9h2v6H7z",
   warn: "M7 1h2v2H7zM6 3h4v2H6zM5 5h6v2H5zM4 7h8v2H4zM3 9h10v2H3zM2 11h12v3H2z",
+  heart: "M2 2h4v2H2zM10 2h4v2h-4zM1 4h14v4H1zM2 8h12v2H2zM4 10h8v2H4zM6 12h4v2H6z",
+  code: "M4 4h2v2H4zM2 6h2v4H2zM4 10h2v2H4zM10 4h2v2h-2zM12 6h2v4h-2zM10 10h2v2h-2zM8 3h2v3H8zM7 6h2v4H7zM6 10h2v3H6z",
+  bug: "M6 1h4v2H6zM4 3h8v2H4zM3 5h10v8H3zM5 13h6v2H5zM1 6h2v2H1zM13 6h2v2h-2zM1 10h2v2H1zM13 10h2v2h-2z",
+  book: "M1 2h6v12H1zM9 2h6v12H9zM7 3h2v11H7z",
+  chat: "M1 2h14v9H1zM3 11h4v2H3zM3 13h2v2H3z",
+  clock: "M5 1h6v2H5zM3 3h2v2H3zM11 3h2v2h-2zM1 5h2v6H1zM13 5h2v6h-2zM3 11h2v2H3zM11 11h2v2h-2zM5 13h6v2H5zM7 4h2v5H7zM9 7h3v2H9z",
 } as const;
 
 export type IconName = keyof typeof ICONS;

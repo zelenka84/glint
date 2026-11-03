@@ -78,12 +78,24 @@ pub struct Version {
     pub files: Vec<VersionFile>,
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
+    #[serde(default)]
+    pub game_versions: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<String>,
+    #[serde(default)]
+    pub date_published: String,
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default)]
+    pub changelog: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct VersionFile {
     pub url: String,
     pub filename: String,
+    #[serde(default)]
+    pub size: u64,
     #[serde(default)]
     pub primary: bool,
     pub hashes: FileHashes,
@@ -112,9 +124,78 @@ impl Version {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Project {
+    #[serde(default)]
+    pub id: String,
     pub title: String,
     #[serde(default)]
     pub icon_url: Option<String>,
+}
+
+/// Everything Modrinth says about a project, for its page in Discover.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDetails {
+    pub id: String,
+    pub slug: Option<String>,
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    /// Long description in Markdown (may contain HTML).
+    #[serde(default)]
+    pub body: String,
+    #[serde(default, alias = "icon_url")]
+    pub icon_url: Option<String>,
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default)]
+    pub followers: u64,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    #[serde(default, alias = "additional_categories")]
+    pub additional_categories: Vec<String>,
+    #[serde(default)]
+    pub license: Option<License>,
+    #[serde(default, alias = "source_url")]
+    pub source_url: Option<String>,
+    #[serde(default, alias = "issues_url")]
+    pub issues_url: Option<String>,
+    #[serde(default, alias = "wiki_url")]
+    pub wiki_url: Option<String>,
+    #[serde(default, alias = "discord_url")]
+    pub discord_url: Option<String>,
+    #[serde(default)]
+    pub gallery: Vec<GalleryImage>,
+    #[serde(default)]
+    pub published: String,
+    #[serde(default)]
+    pub updated: String,
+    #[serde(default, alias = "client_side")]
+    pub client_side: String,
+    #[serde(default, alias = "server_side")]
+    pub server_side: String,
+    #[serde(default, alias = "project_type")]
+    pub project_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct License {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GalleryImage {
+    pub url: String,
+    #[serde(default, alias = "raw_url")]
+    pub raw_url: Option<String>,
+    #[serde(default)]
+    pub featured: bool,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 pub struct ModrinthApi {
@@ -219,14 +300,13 @@ impl ModrinthApi {
         self.get(&format!("/version/{}", encode(version_id))).await
     }
 
-    /// The newest release of `project_id` (an id or slug) compatible with `target`,
-    /// falling back to betas when there is no release.
-    pub async fn best_version(
+    /// Versions of `project_id` (an id or slug) compatible with `target`, newest first.
+    pub async fn versions(
         &self,
         project_id: &str,
         target: &Target,
         kind: ContentKind,
-    ) -> Result<Version> {
+    ) -> Result<Vec<Version>> {
         let games = serde_json::to_string(&[&target.game_version]).expect("versions serialize");
         let mut path = format!(
             "/project/{}/version?game_versions={}",
@@ -237,15 +317,37 @@ impl ModrinthApi {
             let loaders = serde_json::to_string(&loaders).expect("loaders serialize");
             path.push_str(&format!("&loaders={}", encode(&loaders)));
         }
-        let versions: Vec<Version> = self.get(&path).await?;
-        let release = versions.iter().position(|v| v.version_type == "release");
-        let index = release.or(if versions.is_empty() { None } else { Some(0) });
-        index.map(|i| versions[i].clone()).ok_or_else(|| {
+        self.get(&path).await
+    }
+
+    /// The full project, uncached: its page shows the live description and counts.
+    pub async fn project_details(&self, project_id: &str) -> Result<ProjectDetails> {
+        self.get(&format!("/project/{}", encode(project_id))).await
+    }
+
+    /// The newest release of `project_id` (an id or slug) compatible with `target`,
+    /// falling back to betas when there is no release.
+    pub async fn best_version(
+        &self,
+        project_id: &str,
+        target: &Target,
+        kind: ContentKind,
+    ) -> Result<Version> {
+        let versions = self.versions(project_id, target, kind).await?;
+        Self::pick_best(&versions).cloned().ok_or_else(|| {
             Error::NoCompatibleVersion(
                 self.cached_title(project_id)
                     .unwrap_or_else(|| project_id.to_owned()),
             )
         })
+    }
+
+    /// The first release in a newest-first list, else whatever is newest.
+    pub fn pick_best(versions: &[Version]) -> Option<&Version> {
+        versions
+            .iter()
+            .find(|v| v.version_type == "release")
+            .or(versions.first())
     }
 
     /// Newest compatible versions for installed files, keyed by their SHA-512.

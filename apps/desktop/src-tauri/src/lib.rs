@@ -15,18 +15,20 @@ use glint_launch::{PlayEvent, PlayRequest, QuickPlay};
 use glint_meta::mojang::VersionType;
 use glint_meta::{Endpoints, MetaClient, MetaLayout};
 use glint_modrinth::{
-    ContentKind, InstalledMod, ModManager, ModrinthApi, SearchQuery, SearchResults, Target, Update,
+    ContentKind, InstalledMod, ModManager, ModrinthApi, ProjectPage, SearchQuery, SearchResults,
+    Target, Update,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 /// Offline names need a verified game owner in Public builds only.
-const OFFLINE_POLICY: OfflinePolicy = if cfg!(any(debug_assertions, feature = "dev", feature = "beta")) {
-    OfflinePolicy::Unrestricted
-} else {
-    OfflinePolicy::RequireOwnership
-};
+const OFFLINE_POLICY: OfflinePolicy =
+    if cfg!(any(debug_assertions, feature = "dev", feature = "beta")) {
+        OfflinePolicy::Unrestricted
+    } else {
+        OfflinePolicy::RequireOwnership
+    };
 
 /// Dev builds turn on experimental features; Beta and Public leave them off.
 const EXPERIMENTAL: bool = cfg!(any(debug_assertions, feature = "dev"));
@@ -693,10 +695,25 @@ async fn install_content(
     instance: String,
     kind: ContentKind,
     project_id: String,
+    version_id: Option<String>,
 ) -> CmdResult<Vec<String>> {
     let (dir, target) = content_target(&state, &instance)?;
     content_manager(&state, dir, kind)
-        .install(&project_id, &target)
+        .install_version(&project_id, version_id.as_deref(), &target)
+        .await
+        .map_err(err)
+}
+
+#[tauri::command]
+async fn content_project(
+    state: State<'_, AppState>,
+    instance: String,
+    kind: ContentKind,
+    project_id: String,
+) -> CmdResult<ProjectPage> {
+    let (dir, target) = content_target(&state, &instance)?;
+    content_manager(&state, dir, kind)
+        .project_page(&project_id, &target)
         .await
         .map_err(err)
 }
@@ -874,6 +891,7 @@ pub fn run() {
             loader_versions,
             search_content,
             install_content,
+            content_project,
             update_content,
             content_updates,
             installed_content,

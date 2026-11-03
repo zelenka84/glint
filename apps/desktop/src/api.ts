@@ -43,6 +43,51 @@ export type ModHit = {
   categories: string[];
 };
 export type SearchResults = { hits: ModHit[]; totalHits: number };
+export type GalleryImage = { url: string; rawUrl: string | null; featured: boolean; title: string | null; description: string | null };
+export type ProjectDetails = {
+  id: string;
+  slug: string | null;
+  title: string;
+  description: string;
+  body: string;
+  iconUrl: string | null;
+  downloads: number;
+  followers: number;
+  categories: string[];
+  additionalCategories: string[];
+  license: { id: string; name: string } | null;
+  sourceUrl: string | null;
+  issuesUrl: string | null;
+  wikiUrl: string | null;
+  discordUrl: string | null;
+  gallery: GalleryImage[];
+  published: string;
+  updated: string;
+  clientSide: string;
+  serverSide: string;
+  projectType: string;
+};
+export type PageVersion = {
+  id: string;
+  name: string;
+  versionNumber: string;
+  versionType: string;
+  gameVersions: string[];
+  loaders: string[];
+  datePublished: string;
+  downloads: number;
+  changelog: string | null;
+  filename: string | null;
+  size: number;
+};
+export type PageDependency = { projectId: string; title: string; iconUrl: string | null; required: boolean; installed: boolean };
+export type ProjectPage = {
+  project: ProjectDetails;
+  versions: PageVersion[];
+  recommended: string | null;
+  installedVersion: string | null;
+  dependencies: PageDependency[];
+};
 export type ContentKind = "mod" | "resourcepack" | "shader";
 export type InstalledMod = {
   filename: string;
@@ -151,8 +196,10 @@ export const api = {
 
   searchContent: (instance: string | null, kind: ContentKind, query: string, offset = 0) =>
     invoke<SearchResults>("search_content", { instance, kind, query, offset }),
-  installContent: (instance: string, kind: ContentKind, projectId: string) =>
-    invoke<string[]>("install_content", { instance, kind, projectId }),
+  installContent: (instance: string, kind: ContentKind, projectId: string, versionId?: string) =>
+    invoke<string[]>("install_content", { instance, kind, projectId, versionId: versionId ?? null }),
+  contentProject: (instance: string, kind: ContentKind, projectId: string) =>
+    invoke<ProjectPage>("content_project", { instance, kind, projectId }),
   updateContent: (instance: string, kind: ContentKind, projectId: string) =>
     invoke<string[]>("update_content", { instance, kind, projectId }),
   contentUpdates: (instance: string, kind: ContentKind) => invoke<ContentUpdate[]>("content_updates", { instance, kind }),

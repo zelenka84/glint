@@ -183,3 +183,84 @@ async fn shader_packs_bring_iris_and_updates_are_found() {
 
 /// SHA-512 of the bytes `b"glow.zip"` the fake server returns.
 const GLOW_SHA512: &str = "eafef05a2286e918178d34e010690d8fe3545faf6806b723dc059476d1002ce98dcf9082597841618d711bb7ad52a5ddf260c037047b1f51a611e7a81f81fc0e";
+
+#[tokio::test]
+async fn project_page_lists_versions_and_dependencies_and_installs_a_chosen_version() {
+    let server = MockServer::start().await;
+    let base = server.uri();
+    mount(&server, "/project/sodium/version", json!([
+        version("beta1", "sodium-beta.jar", &base, json!([])),
+        version("rel1", "sodium.jar", &base, json!([{"project_id": "api", "version_id": null, "dependency_type": "required"},
+                                                   {"project_id": "extras", "version_id": null, "dependency_type": "optional"},
+                                                   {"project_id": "old", "version_id": null, "dependency_type": "incompatible"}])),
+    ]))
+    .await;
+    mount(
+        &server,
+        "/project/sodium",
+        json!({"id": "sodium", "title": "Sodium", "body": "# Fast", "downloads": 10}),
+    )
+    .await;
+    mount(
+        &server,
+        "/project/api",
+        json!({"id": "api", "title": "Fabric API"}),
+    )
+    .await;
+    mount(
+        &server,
+        "/project/extras",
+        json!({"id": "extras", "title": "Extras"}),
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/files/sodium-beta.jar"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"beta".as_slice()))
+        .mount(&server)
+        .await;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let api = ModrinthApi::with_base(glint_net::http_client(), &base);
+    let manager = ModManager::new(&api, glint_net::http_client(), tmp.path(), ContentKind::Mod);
+    let target = Target {
+        game_version: "1.21.4".into(),
+        loader: Some(LoaderKind::Fabric),
+    };
+
+    let page = manager.project_page("sodium", &target).await.unwrap();
+    assert_eq!(page.project.body, "# Fast");
+    assert_eq!(
+        page.versions
+            .iter()
+            .map(|v| v.id.as_str())
+            .collect::<Vec<_>>(),
+        ["beta1", "rel1"]
+    );
+    assert_eq!(page.recommended.as_deref(), Some("rel1"));
+    assert_eq!(page.installed_version, None);
+    let deps: Vec<_> = page
+        .dependencies
+        .iter()
+        .map(|d| (d.title.as_str(), d.required, d.installed))
+        .collect();
+    assert_eq!(
+        deps,
+        [("Fabric API", true, false), ("Extras", false, false)]
+    );
+
+    // A chosen version installs instead of the recommended one; the beta has no dependencies.
+    mount(
+        &server,
+        "/version/beta1",
+        version("beta1", "sodium-beta.jar", &base, json!([])),
+    )
+    .await;
+    let installed = manager
+        .install_version("sodium", Some("beta1"), &target)
+        .await
+        .unwrap();
+    assert_eq!(installed, ["Sodium"]);
+    assert!(tmp.path().join("game/mods/sodium-beta.jar").is_file());
+    let page = manager.project_page("sodium", &target).await.unwrap();
+    assert_eq!(page.installed_version.as_deref(), Some("beta1"));
+}

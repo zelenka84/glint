@@ -58,7 +58,21 @@ fn image_ext(bytes: &[u8]) -> Option<&'static str> {
         [0x89, b'P', b'N', b'G', ..] => Some("png"),
         [0xFF, 0xD8, 0xFF, ..] => Some("jpg"),
         [b'G', b'I', b'F', b'8', ..] => Some("gif"),
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("webp"),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some("webp"),
         [b'B', b'M', ..] => Some("bmp"),
         _ => None,
     }
@@ -81,7 +95,11 @@ pub fn import_image(state: State<'_, AppState>, request: Request<'_>) -> CmdResu
     let InvokeBody::Raw(bytes) = request.body() else {
         return Err("expected the image file".into());
     };
-    let folder = match request.headers().get("x-glint-kind").and_then(|v| v.to_str().ok()) {
+    let folder = match request
+        .headers()
+        .get("x-glint-kind")
+        .and_then(|v| v.to_str().ok())
+    {
         Some("background") => "backgrounds",
         Some("cover") => "covers",
         _ => return Err("unknown image kind".into()),
@@ -117,10 +135,20 @@ pub fn delete_media(state: State<'_, AppState>, image: String) -> CmdResult<()> 
 fn theme_file_name(name: &str) -> String {
     let clean: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { ' ' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                ' '
+            }
+        })
         .collect();
     let clean = clean.split_whitespace().collect::<Vec<_>>().join("-");
-    let stem = if clean.is_empty() { "theme".to_owned() } else { clean };
+    let stem = if clean.is_empty() {
+        "theme".to_owned()
+    } else {
+        clean
+    };
     format!("{stem}.glint-theme.json")
 }
 
