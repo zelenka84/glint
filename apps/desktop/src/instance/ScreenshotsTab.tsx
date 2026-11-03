@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, type Instance, type Screenshot } from "../api";
 import { Icon, formatBytes } from "../ui";
+import { EmptyArt } from "../EmptyArt";
 
 function when(seconds: number): string {
   return new Date(seconds * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
@@ -87,7 +88,7 @@ export function ScreenshotsTab({ instance }: { instance: Instance }) {
         <div className="shot-grid">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton shot-skeleton px4" />)}</div>
       ) : shots.length === 0 ? (
         <div className="empty px4">
-          <Icon name="image" size={28} />
+          <EmptyArt art="picture" />
           <p className="pix">No screenshots yet</p>
           <p className="muted">Press F2 in game; they show up here.</p>
         </div>

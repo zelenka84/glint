@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PlayerHead, accountKindLabel } from "./Accounts";
-import { api, type Accounts, type AppInfo, type Instance, type PlayTarget, type VersionList } from "./api";
+import { api, type Accounts, type AppInfo, type ContentKind, type Instance, type ModHit, type PlayTarget, type VersionList } from "./api";
 import { Home } from "./Home";
 import { DeleteInstanceModal, EditInstanceModal, KillInstanceModal, NewInstanceModal } from "./InstanceModals";
 import { InstancePage, type InstanceTab } from "./instance/InstancePage";
@@ -70,6 +70,7 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState<{ name: string; tab: InstanceTab }>({ name: "", tab: "log" });
   const [tour, setTour] = useState(false);
+  const [discoverOpen, setDiscoverOpen] = useState<{ kind: ContentKind; hit: ModHit } | null>(null);
 
   const refreshInstances = useCallback(() => api.instances().then(setInstances, (e) => setNotice(String(e))), []);
 
@@ -220,11 +221,19 @@ function App() {
                 onManage={(instance) => openInstance(instance.name)}
                 onLibrary={() => setScreen("library")}
                 onAccount={async (uuid) => setAccounts(await api.setActiveAccount(uuid))}
+                onPlayTarget={play}
+                onOpenTab={openInstance}
+                onDiscover={(kind, hit) => {
+                  setDiscoverOpen({ kind, hit });
+                  setScreen("mods");
+                }}
               />
             )}
             {screen === "mods" && (
               <Discover
                 instances={instances}
+                initial={discoverOpen}
+                onInitialUsed={() => setDiscoverOpen(null)}
                 selected={selected?.name ?? null}
                 onSelect={setSelectedName}
                 onCreate={() => setDialog({ kind: "new" })}
@@ -242,6 +251,7 @@ function App() {
                 onEdit={(instance) => openInstance(instance.name, "settings")}
                 onDelete={(instance) => setDialog({ kind: "delete", instance })}
                 onKill={(instance) => setDialog({ kind: "kill", instance })}
+                onChanged={refreshInstances}
               />
             )}
             {screen === "instance" && pageInstance && (

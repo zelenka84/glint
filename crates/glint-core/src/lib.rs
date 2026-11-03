@@ -8,6 +8,6 @@ pub mod paths;
 
 pub use error::{Error, Result};
 pub use instance::{
-    Engine, GameSettings, InstanceManifest, JavaSettings, LaunchHooks, Loader, LoaderKind,
+    Engine, GameSettings, InstanceManifest, JavaSettings, LaunchHooks, Loader, LoaderKind, PlayTime,
 };
 pub use paths::GlintPaths;

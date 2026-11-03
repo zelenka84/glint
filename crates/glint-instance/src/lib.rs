@@ -161,6 +161,13 @@ impl InstanceStore {
         self.save(&manifest)
     }
 
+    /// Adds a finished play session to the instance's play time.
+    pub fn add_play_time(&self, name: &str, secs: u64) -> Result<()> {
+        let mut manifest = self.get(name)?;
+        manifest.play_time.add_session(secs);
+        self.save(&manifest)
+    }
+
     /// A free name based on `base`: `base`, `base (2)`, `base (3)`, …
     pub fn unique_name(&self, base: &str) -> String {
         let taken = |n: &str| self.paths.instance(n).map(|d| d.exists()).unwrap_or(true);
@@ -217,6 +224,21 @@ mod tests {
             .unwrap();
         store.mark_played("B").unwrap();
         assert_eq!(store.list().unwrap()[0].name, "B");
+    }
+
+    #[test]
+    fn play_time_adds_up_across_sessions() {
+        let (_tmp, store) = store();
+        store
+            .create(&InstanceManifest::vanilla("A", "1.21"))
+            .unwrap();
+        store.add_play_time("A", 600).unwrap();
+        store.add_play_time("A", 90).unwrap();
+        let time = store.get("A").unwrap().play_time;
+        assert_eq!(
+            (time.total_secs, time.sessions, time.last_session_secs),
+            (690, 2, 90)
+        );
     }
 
     #[test]

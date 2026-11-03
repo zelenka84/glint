@@ -65,7 +65,7 @@ export function XpBar({ done, total }: { done: number; total: number }) {
   );
 }
 
-export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const first = dialog.current?.querySelector<HTMLElement>("input, select, button");
@@ -78,7 +78,7 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
   // Rendered into <body>: panels clip their content with clip-path, which would cut a dialog in half.
   return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal px4 drop" role="dialog" aria-modal="true" aria-label={title} ref={dialog}>
+      <div className={`modal px4 drop ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} ref={dialog}>
         <div className="modal-head">
           <h2 className="pix">{title}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Close">

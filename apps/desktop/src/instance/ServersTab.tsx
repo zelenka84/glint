@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { api, type Instance, type PlayTarget, type Server, type ServerResources, type ServerStatus } from "../api";
 import { B3D, Icon } from "../ui";
+import { EmptyArt } from "../EmptyArt";
 
 type Ping = { state: "loading" } | { state: "ok"; status: ServerStatus } | { state: "down"; error: string };
 
@@ -178,7 +179,7 @@ export function ServersTab({ instance, canPlay, onPlay }: { instance: Instance; 
         <div className="skeleton-list">{[0, 1].map((i) => <div key={i} className="skeleton tall px4" />)}</div>
       ) : servers.length === 0 && editing !== "new" ? (
         <div className="empty px4">
-          <Icon name="server" size={28} />
+          <EmptyArt art="night" />
           <p className="pix">No servers yet</p>
           <p className="muted">Add one here or in game; both edit the same list.</p>
         </div>

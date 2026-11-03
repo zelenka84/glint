@@ -3,6 +3,7 @@ import { api, type Instance, type LogFile } from "../api";
 import { Icon, formatBytes } from "../ui";
 import { SearchBar } from "./LogTab";
 import { type LogLine, LogView, Toggle, useCopied } from "./LogView";
+import { EmptyArt } from "../EmptyArt";
 
 const LEVEL = /\[[^\]]*?\/(INFO|WARN|ERROR|FATAL|DEBUG)\]/;
 
@@ -101,7 +102,7 @@ export function LogsTab({ instance }: { instance: Instance }) {
 
       {files?.length === 0 ? (
         <div className="empty px4">
-          <Icon name="file" size={28} />
+          <EmptyArt art="night" />
           <p className="pix">No logs yet</p>
           <p className="muted">The game writes logs and crash reports here after it runs.</p>
         </div>

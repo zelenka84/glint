@@ -1,18 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type ContentKind, type Instance } from "../api";
+import { api, type ContentKind, type Instance, type ModHit } from "../api";
 import { B3D, Icon, flavourOf } from "../ui";
 import { ContentBrowser, KIND_LABEL } from "./ContentBrowser";
+import { EmptyArt } from "../EmptyArt";
 
 const KINDS: ContentKind[] = ["mod", "resourcepack", "shader"];
 
 /** Modrinth catalog for mods, resource packs and shaders, installing into a chosen instance. */
-export function Discover({ instances, selected, onSelect, onCreate }: {
+export function Discover({ instances, initial, onInitialUsed, selected, onSelect, onCreate }: {
   instances: Instance[];
+  /** A project to open straight away, e.g. picked on Home. */
+  initial?: { kind: ContentKind; hit: ModHit } | null;
+  onInitialUsed?: () => void;
   selected: string | null;
   onSelect: (name: string) => void;
   onCreate: () => void;
 }) {
-  const [kind, setKind] = useState<ContentKind>("mod");
+  const [kind, setKind] = useState<ContentKind>(initial?.kind ?? "mod");
+  // Read once on mount; the browser below opens it, then the parent forgets it.
+  const [opening] = useState(initial ?? null);
+  useEffect(() => {
+    if (initial) onInitialUsed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
@@ -75,6 +85,7 @@ export function Discover({ instances, selected, onSelect, onCreate }: {
           key={`${instance.name}-${kind}`}
           instance={instance.name}
           kind={kind}
+          initialOpen={opening?.kind === kind ? opening.hit : null}
           installed={installed}
           onError={(text) => setNotice({ tone: "bad", text })}
           onInstalled={(titles, hit) => {
@@ -87,6 +98,7 @@ export function Discover({ instances, selected, onSelect, onCreate }: {
         />
       ) : (
         <div className="empty px4">
+          <EmptyArt art="chest" />
           <p className="pix">{kind === "mod" ? "Mods need a modded instance" : "Create an instance first"}</p>
           <p className="muted">
             {kind === "mod"

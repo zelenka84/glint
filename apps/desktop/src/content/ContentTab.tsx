@@ -3,6 +3,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, type ContentKind, type ContentUpdate, type Instance, type InstalledMod } from "../api";
 import { B3D, Icon, Switch, formatBytes } from "../ui";
 import { ContentBrowser, KIND_LABEL, ProjectIcon } from "./ContentBrowser";
+import { EmptyArt } from "../EmptyArt";
 
 const DROP_EXT: Record<ContentKind, string> = { mod: ".jar", resourcepack: ".zip", shader: ".zip" };
 
@@ -161,6 +162,7 @@ export function ContentTab({ instance, kind }: { instance: Instance; kind: Conte
         />
       ) : needsLoader ? (
         <div className="empty px4">
+          <EmptyArt art="map" />
           <p className="pix">Vanilla runs no mods</p>
           <p className="muted">Pick Fabric, Quilt, Forge or NeoForge in the Version tab to add mods to this instance.</p>
         </div>
@@ -168,7 +170,7 @@ export function ContentTab({ instance, kind }: { instance: Instance; kind: Conte
         <div className="skeleton-list">{[0, 1, 2].map((i) => <div key={i} className="skeleton px4" />)}</div>
       ) : items.length === 0 ? (
         <div className="empty drop-hint px4">
-          <Icon name="upload" size={28} />
+          <EmptyArt art="chest" />
           <p className="pix">No {label.many.toLowerCase()} yet</p>
           <p className="muted">
             Find some on Modrinth, or drop {DROP_EXT[kind]} files onto this window.

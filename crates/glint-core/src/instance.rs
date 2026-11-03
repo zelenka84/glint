@@ -21,9 +21,15 @@ pub struct InstanceManifest {
     /// Cover art preset shown in the library.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cover: Option<String>,
+    /// Library group the instance is filed under; none means ungrouped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// Unix seconds of the last launch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_played: Option<u64>,
+    /// How long and how often this instance has been played.
+    #[serde(default, skip_serializing_if = "PlayTime::is_default")]
+    pub play_time: PlayTime,
     #[serde(default, skip_serializing_if = "GameSettings::is_default")]
     pub game: GameSettings,
     #[serde(default, skip_serializing_if = "LaunchHooks::is_default")]
@@ -31,6 +37,29 @@ pub struct InstanceManifest {
     /// Extra environment variables for the game process and hooks.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+}
+
+/// Time spent in game, counted from start to exit of each session.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayTime {
+    #[serde(default)]
+    pub total_secs: u64,
+    #[serde(default)]
+    pub sessions: u32,
+    #[serde(default)]
+    pub last_session_secs: u64,
+}
+
+impl PlayTime {
+    fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    pub fn add_session(&mut self, secs: u64) {
+        self.total_secs += secs;
+        self.sessions += 1;
+        self.last_session_secs = secs;
+    }
 }
 
 /// How the game window starts and where the game goes first.
@@ -139,7 +168,9 @@ impl InstanceManifest {
             loader: None,
             java: JavaSettings::default(),
             cover: None,
+            group: None,
             last_played: None,
+            play_time: PlayTime::default(),
             game: GameSettings::default(),
             hooks: LaunchHooks::default(),
             env: BTreeMap::new(),

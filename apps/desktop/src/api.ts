@@ -18,7 +18,11 @@ export type Instance = {
   extraJvmArgs: string;
   maxMemoryMb: number;
   cover: string | null;
+  group: string | null;
   lastPlayed: number | null;
+  /** Seconds spent in game over all sessions. */
+  playTimeSecs: number;
+  sessions: number;
   running: boolean;
 };
 
@@ -153,6 +157,17 @@ export type InstanceSettings = {
 export type JavaInstall = { path: string; version: string | null; source: string };
 export type LogFile = { id: string; name: string; kind: "log" | "crash"; size: number; modified: number };
 export type PlayTarget = { world?: string; server?: string };
+export type NewsItem = { id: string; title: string; tag: string; date: string; text: string; image: string | null; link: string };
+export type PatchNote = {
+  id: string;
+  title: string;
+  version: string;
+  kind: string;
+  image: string | null;
+  date: string;
+  shortText: string;
+  contentPath: string;
+};
 
 export type AppInfo = { version: string; dataDir: string; channel: "dev" | "beta" | "public"; experimental: boolean };
 
@@ -194,6 +209,11 @@ export const api = {
   updateInstance: (name: string, changes: InstanceChanges) => invoke<string>("update_instance", { name, changes }),
   deleteInstance: (name: string) => invoke<void>("delete_instance", { name }),
   openInstanceFolder: (name: string) => invoke<void>("open_instance_folder", { name }),
+  setInstanceGroup: (name: string, group: string | null) => invoke<void>("set_instance_group", { name, group }),
+
+  minecraftNews: () => invoke<NewsItem[]>("minecraft_news"),
+  patchNotes: () => invoke<PatchNote[]>("patch_notes"),
+  patchNoteBody: (contentPath: string) => invoke<string>("patch_note_body", { contentPath }),
 
   loaderVersions: (kind: LoaderKind, gameVersion: string) =>
     invoke<LoaderVersion[]>("loader_versions", { kind, gameVersion }),

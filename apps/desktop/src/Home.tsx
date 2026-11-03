@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { Accounts, Instance } from "./api";
+import type { Accounts, ContentKind, Instance, ModHit, PlayTarget } from "./api";
+import { Dashboard } from "./home/Dashboard";
+import type { InstanceTab } from "./instance/InstancePage";
 import { scenes, type SceneName } from "./scenes";
 import type { Session } from "./session";
 import type { Background } from "./theme";
@@ -21,6 +23,9 @@ type Props = {
   onManage: (instance: Instance) => void;
   onLibrary: () => void;
   onAccount: (uuid: string) => void;
+  onPlayTarget: (name: string, target: PlayTarget) => void;
+  onOpenTab: (name: string, tab: InstanceTab) => void;
+  onDiscover: (kind: ContentKind, hit: ModHit) => void;
 };
 
 export function PlayControl({ instance, session, canPlay, onPlay, onKill }: {
@@ -167,6 +172,17 @@ export function Home(props: Props) {
             ))}
           </div>
         </section>
+      )}
+
+      {selected && (
+        <Dashboard
+          instance={selected}
+          instances={props.instances}
+          canPlay={!!active}
+          onPlay={props.onPlayTarget}
+          onOpenTab={props.onOpenTab}
+          onDiscover={props.onDiscover}
+        />
       )}
 
       {selected && (

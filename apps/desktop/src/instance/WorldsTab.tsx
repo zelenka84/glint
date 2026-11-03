@@ -3,6 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, type Instance, type PlayTarget, type World } from "../api";
 import { B3D, Icon, Modal, formatBytes } from "../ui";
 import { useCopied } from "./LogView";
+import { EmptyArt } from "../EmptyArt";
 
 function timeAgo(ms: number | null): string {
   if (!ms) return "never";
@@ -101,7 +102,7 @@ export function WorldsTab({ instance, canPlay, onPlay }: { instance: Instance; c
         <div className="skeleton-list">{[0, 1].map((i) => <div key={i} className="skeleton tall px4" />)}</div>
       ) : worlds.length === 0 ? (
         <div className="empty px4">
-          <Icon name="globe" size={28} />
+          <EmptyArt art="map" />
           <p className="pix">No worlds yet</p>
           <p className="muted">Create one in game, or copy a world folder into the saves folder.</p>
         </div>

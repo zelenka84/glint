@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type ContentKind, type ModHit } from "../api";
 import { B3D, Icon } from "../ui";
 import { ProjectPage } from "./ProjectPage";
+import { EmptyArt } from "../EmptyArt";
 
 export const KIND_LABEL: Record<ContentKind, { one: string; many: string }> = {
   mod: { one: "mod", many: "Mods" },
@@ -24,9 +25,11 @@ export function ProjectIcon({ url, size = 48 }: { url: string | null; size?: num
 }
 
 /** Modrinth search for one instance and kind, with one-click install. */
-export function ContentBrowser({ instance, kind, installed, onInstalled, onError }: {
+export function ContentBrowser({ instance, kind, initialOpen, installed, onInstalled, onError }: {
   instance: string;
   kind: ContentKind;
+  /** A project whose page shows first. */
+  initialOpen?: ModHit | null;
   /** Project ids already in the instance. */
   installed: Set<string>;
   onInstalled: (titles: string[], hit: ModHit) => void;
@@ -37,7 +40,7 @@ export function ContentBrowser({ instance, kind, installed, onInstalled, onError
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
-  const [open, setOpen] = useState<ModHit | null>(null);
+  const [open, setOpen] = useState<ModHit | null>(initialOpen ?? null);
   const root = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(0);
 
@@ -170,7 +173,13 @@ export function ContentBrowser({ instance, kind, installed, onInstalled, onError
               </article>
             );
           })}
-          {!loading && hits.length === 0 && <p className="muted">Nothing found for this Minecraft version.</p>}
+          {!loading && hits.length === 0 && (
+            <div className="empty compact px4">
+              <EmptyArt art="map" size={72} />
+              <p className="pix">Nothing found</p>
+              <p className="muted">Nothing matches for this Minecraft version. Try another word.</p>
+            </div>
+          )}
           {hits.length < total && (
             <div className="load-more">
               <B3D onClick={loadMore} disabled={loading}>

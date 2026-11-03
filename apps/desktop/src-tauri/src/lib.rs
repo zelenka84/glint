@@ -2,6 +2,7 @@
 
 mod appearance;
 mod gamedir;
+mod news;
 mod settings;
 
 use std::collections::{HashMap, HashSet};
@@ -254,7 +255,10 @@ struct InstanceView {
     extra_jvm_args: String,
     max_memory_mb: u32,
     cover: Option<String>,
+    group: Option<String>,
     last_played: Option<u64>,
+    play_time_secs: u64,
+    sessions: u32,
     running: bool,
 }
 
@@ -271,9 +275,26 @@ fn instance_view(m: &InstanceManifest, running: &HashSet<String>) -> InstanceVie
         extra_jvm_args: m.java.extra_args.join(" "),
         max_memory_mb: m.java.max_memory_mb,
         cover: m.cover.clone(),
+        group: m.group.clone(),
         last_played: m.last_played,
+        play_time_secs: m.play_time.total_secs,
+        sessions: m.play_time.sessions,
         running: running.contains(&m.name),
     }
+}
+
+/// Files an instance under a Library group, or takes it out with an empty name.
+#[tauri::command]
+fn set_instance_group(
+    state: State<'_, AppState>,
+    name: String,
+    group: Option<String>,
+) -> CmdResult<()> {
+    let mut manifest = state.instances.get(&name).map_err(err)?;
+    manifest.group = group
+        .map(|g| g.trim().chars().take(32).collect::<String>())
+        .filter(|g| !g.is_empty());
+    state.instances.save(&manifest).map_err(err)
 }
 
 #[tauri::command]
@@ -577,18 +598,29 @@ async fn play(
             hooks: manifest.hooks.clone(),
             env: manifest.env.clone().into_iter().collect(),
         };
+        let started = Mutex::new(None::<std::time::Instant>);
         let emit = |event: PlayEvent| {
             match &event {
-                PlayEvent::Started { pid: Some(pid) } => {
-                    state
-                        .pids
-                        .lock()
-                        .expect("pids lock")
-                        .insert(instance.clone(), *pid);
+                PlayEvent::Started { pid } => {
+                    *started.lock().expect("started lock") = Some(std::time::Instant::now());
+                    if let Some(pid) = pid {
+                        state
+                            .pids
+                            .lock()
+                            .expect("pids lock")
+                            .insert(instance.clone(), *pid);
+                    }
                 }
                 // Clear the running state before the UI hears about the exit, or its
                 // refresh would still see the instance as running.
                 PlayEvent::Exited { .. } => {
+                    if let Some(at) = started.lock().expect("started lock").take()
+                        && let Err(e) = state
+                            .instances
+                            .add_play_time(&instance, at.elapsed().as_secs())
+                    {
+                        tracing::warn!(error = %e, "could not record play time");
+                    }
                     state
                         .running
                         .lock()
@@ -948,6 +980,10 @@ pub fn run() {
             set_content_enabled,
             open_content_folder,
             gamedir::list_worlds,
+            set_instance_group,
+            news::minecraft_news,
+            news::patch_notes,
+            news::patch_note_body,
             gamedir::rename_world,
             gamedir::duplicate_world,
             gamedir::backup_world,
