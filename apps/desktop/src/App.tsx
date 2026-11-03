@@ -267,6 +267,7 @@ function App() {
                 }}
                 onDelete={(instance) => setDialog({ kind: "delete", instance })}
                 versions={versions}
+                experimental={!!info?.experimental}
               />
             )}
             {screen === "settings" && (
@@ -289,6 +290,7 @@ function App() {
       {dialog?.kind === "new" && (
         <NewInstanceModal
           versions={versions}
+          experimental={!!info?.experimental}
           onClose={() => setDialog(null)}
           onCreate={async (instance) => {
             const name = await api.createInstance(instance);

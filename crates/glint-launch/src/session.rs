@@ -11,10 +11,12 @@ use serde::Serialize;
 
 use crate::injector;
 use crate::log::LogParser;
-use crate::{LaunchOptions, build_command, prepare, spawn};
+use crate::{LaunchCommand, LaunchOptions, build_command, prepare, spawn};
 
 #[derive(Debug, Clone)]
 pub struct PlayRequest {
+    /// Java runs `version_id`; Horizon always plays its own Minecraft version.
+    pub engine: glint_core::Engine,
     pub version_id: String,
     pub instance_name: String,
     pub identity: LaunchIdentity,
@@ -61,7 +63,11 @@ pub enum PlayEvent {
     InstallingLoader {
         name: String,
     },
-    Preparing,
+    /// Getting the game ready to start; Horizon reports how far it is.
+    Preparing {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fraction: Option<f64>,
+    },
     Started {
         pid: Option<u32>,
     },
@@ -79,6 +85,7 @@ pub enum PlayEvent {
 pub enum Download {
     Game,
     Java,
+    Horizon,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -95,6 +102,10 @@ pub enum PlayError {
     Launch(#[from] crate::Error),
     #[error(transparent)]
     Loader(#[from] glint_loader::Error),
+    #[error(transparent)]
+    Horizon(#[from] glint_horizon::Error),
+    #[error("Minecraft {0} has no server download, which Horizon needs")]
+    NoServerJar(String),
     #[error("Java was not found at {0}")]
     JavaMissing(PathBuf),
     #[error("the pre-launch command failed ({0}); the game was not started")]
@@ -110,6 +121,9 @@ pub async fn play(
     request: PlayRequest,
     emit: impl Fn(PlayEvent),
 ) -> Result<(), PlayError> {
+    if request.engine == glint_core::Engine::Horizon {
+        return crate::horizon::play(paths, meta, http, request, emit).await;
+    }
     let platform = Platform::current();
     emit(PlayEvent::Resolving {
         version: request.version_id.clone(),
@@ -164,7 +178,7 @@ pub async fn play(
         None => vanilla,
     };
 
-    emit(PlayEvent::Preparing);
+    emit(PlayEvent::Preparing { fraction: None });
     let mut extra_jvm_args = request.extra_jvm_args.clone();
     if let Some(target) = &request.identity.auth_server {
         let downloader = glint_net::Downloader::new(http.clone(), 2);
@@ -227,25 +241,28 @@ pub async fn play(
         ]);
         env
     };
-    if let Some(pre) = request
-        .hooks
-        .pre_launch
-        .as_deref()
-        .filter(|c| !c.trim().is_empty())
-    {
-        let code = run_hook("pre-launch", pre, &hook_env, &instance, &emit).await;
+    let parser = LogParser::default();
+    run_game(command, parser, &request.hooks, &hook_env, &instance, &emit).await
+}
+
+/// Runs the hooks around the game, starts it and streams its log until it exits.
+pub(crate) async fn run_game(
+    mut command: LaunchCommand,
+    mut parser: LogParser,
+    hooks: &glint_core::LaunchHooks,
+    hook_env: &[(String, String)],
+    instance: &Path,
+    emit: &impl Fn(PlayEvent),
+) -> Result<(), PlayError> {
+    if let Some(pre) = hooks.pre_launch.as_deref().filter(|c| !c.trim().is_empty()) {
+        let code = run_hook("pre-launch", pre, hook_env, instance, emit).await;
         if code != Some(0) {
             return Err(PlayError::PreLaunch(
                 code.map_or("could not run".into(), |c| format!("exit code {c}")),
             ));
         }
     }
-    if let Some(wrapper) = request
-        .hooks
-        .wrapper
-        .as_deref()
-        .filter(|c| !c.trim().is_empty())
-    {
+    if let Some(wrapper) = hooks.wrapper.as_deref().filter(|c| !c.trim().is_empty()) {
         let mut parts = wrapper.split_whitespace().map(str::to_owned);
         if let Some(program) = parts.next() {
             let mut args: Vec<String> = parts.collect();
@@ -259,7 +276,6 @@ pub async fn play(
     let game = spawn(&command)?;
     emit(PlayEvent::Started { pid: game.id() });
 
-    let mut parser = LogParser::default();
     let status = game
         .wait(|line| {
             if let Some(entry) = parser.push(&line) {
@@ -270,13 +286,8 @@ pub async fn play(
             }
         })
         .await?;
-    if let Some(post) = request
-        .hooks
-        .post_exit
-        .as_deref()
-        .filter(|c| !c.trim().is_empty())
-    {
-        run_hook("post-exit", post, &hook_env, &instance, &emit).await;
+    if let Some(post) = hooks.post_exit.as_deref().filter(|c| !c.trim().is_empty()) {
+        run_hook("post-exit", post, hook_env, instance, emit).await;
     }
     emit(PlayEvent::Exited {
         code: status.code(),
@@ -337,7 +348,7 @@ async fn run_hook(
 }
 
 /// Reports download progress at most ~10 times a second, plus the final update.
-fn throttled(what: Download, emit: &impl Fn(PlayEvent)) -> impl Fn(Progress) + '_ {
+pub(crate) fn throttled(what: Download, emit: &impl Fn(PlayEvent)) -> impl Fn(Progress) + '_ {
     let last = std::sync::Mutex::new(Instant::now() - Duration::from_secs(1));
     move |p: Progress| {
         let mut last = last.lock().expect("progress lock");

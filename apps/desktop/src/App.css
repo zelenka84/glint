@@ -541,6 +541,22 @@ pre {
   font-size: 12px;
 }
 
+/* Horizon instances: the engine is Rust, not Java. */
+.badge-engine {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 1px 6px;
+  background: #ce5a2b;
+  color: #fff4ec;
+  font-size: 12px;
+}
+
+.chip.chip-engine {
+  background: #ce5a2b;
+  color: #fff4ec;
+}
+
 /* ---- log ---- */
 
 .log {

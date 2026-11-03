@@ -3,7 +3,7 @@ import type { Accounts, Instance } from "./api";
 import { scenes, type SceneName } from "./scenes";
 import type { Session } from "./session";
 import type { Background } from "./theme";
-import { B3D, Cover, Icon, Photo, XpBar, coverFor, relativeTime } from "./ui";
+import { B3D, Cover, Icon, Photo, RustBadge, XpBar, coverFor, flavourOf, relativeTime } from "./ui";
 
 type Props = {
   scene: SceneName;
@@ -83,9 +83,10 @@ export function Home(props: Props) {
               <span className="eyebrow pix">{selected.lastPlayed ? "CONTINUE PLAYING" : "READY TO PLAY"}</span>
               <h1 className="pix">{selected.name}</h1>
               <div className="chips">
+                {selected.engine === "horizon" && <RustBadge chip />}
                 <span className="chip px2">{selected.gameVersion}</span>
-                <span className="chip px2">{selected.loader ? `${selected.loader} ${selected.loaderVersion ?? ""}` : "Vanilla"}</span>
-                <span className="chip px2">{selected.maxMemoryMb / 1024} GB</span>
+                <span className="chip px2">{flavourOf(selected)}</span>
+                {selected.engine !== "horizon" && <span className="chip px2">{selected.maxMemoryMb / 1024} GB</span>}
                 <span className="chip px2">{relativeTime(selected.lastPlayed)}</span>
               </div>
               <div className="row play-row">
@@ -158,6 +159,7 @@ export function Home(props: Props) {
                 <span className="face px4 card">
                   <Cover cover={coverFor(instance.cover, instance.name)} height={80} />
                   {instance.running && <span className="badge pix px2">RUNNING</span>}
+                  {instance.engine === "horizon" && <RustBadge />}
                   <span className="card-title">{instance.name}</span>
                   <span className="card-meta">{instance.gameVersion} · {relativeTime(instance.lastPlayed)}</span>
                 </span>

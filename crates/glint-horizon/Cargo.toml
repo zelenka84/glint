@@ -1,0 +1,24 @@
+[package]
+name = "glint-horizon"
+description = "Installs Horizon builds and prepares their resources from the player's Minecraft files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+flate2.workspace = true
+glint-net.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+hex.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+wiremock.workspace = true

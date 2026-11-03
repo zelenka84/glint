@@ -8,12 +8,14 @@ license.workspace = true
 [dependencies]
 glint-auth.workspace = true
 glint-core.workspace = true
+glint-horizon.workspace = true
 glint-java.workspace = true
 glint-loader.workspace = true
 glint-meta.workspace = true
 glint-net.workspace = true
 reqwest.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

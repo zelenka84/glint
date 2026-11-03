@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import type { Instance } from "./api";
 import { type Background, mediaUrl } from "./theme";
 
 type ButtonProps = {
@@ -232,6 +233,22 @@ export function formatBytes(bytes: number): string {
     unit++;
   }
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+/** Marks a Horizon instance: on a cover's corner, or as a chip beside its version. */
+export function RustBadge({ chip = false }: { chip?: boolean }) {
+  return (
+    <span className={`${chip ? "chip chip-engine" : "badge-engine"} pix px2`} title="Runs on Horizon, the experimental Rust engine">
+      RUST
+    </span>
+  );
+}
+
+/** What an instance runs: "Horizon", "Fabric 0.16.9" or "Vanilla". */
+export function flavourOf(instance: Instance, withVersion = true): string {
+  if (instance.engine === "horizon") return "Horizon";
+  if (!instance.loader) return "Vanilla";
+  return withVersion && instance.loaderVersion ? `${instance.loader} ${instance.loaderVersion}` : instance.loader;
 }
 
 export function relativeTime(unixSeconds: number | null): string {

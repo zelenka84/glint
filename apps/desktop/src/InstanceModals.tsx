@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { api, type Instance, type LoaderKind, type LoaderVersion, type NewInstance, type VersionList } from "./api";
+import { api, type Engine, type Instance, type LoaderKind, type LoaderVersion, type NewInstance, type VersionList } from "./api";
 import { B3D, Cover, type CoverName, Icon, Modal, covers, coverFor, isCustomCover, pickImage } from "./ui";
 
 export function CoverPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
@@ -78,6 +78,48 @@ export const LOADERS: { id: LoaderKind | "vanilla"; label: string; hint: string 
   { id: "neoforge", label: "NeoForge", hint: "Modern Forge successor, 1.20.2+" },
 ];
 
+/** The one Minecraft version Horizon plays. */
+export const HORIZON_VERSION = "26.3";
+
+export const ENGINES: { id: Engine; label: string; hint: string }[] = [
+  { id: "java", label: "Java", hint: "Minecraft as Mojang ships it, with every mod loader" },
+  { id: "horizon", label: "Horizon", hint: `Experimental: Minecraft ${HORIZON_VERSION} rewritten in Rust. No Java mods` },
+];
+
+export function EnginePicker({ value, onChange }: { value: Engine; onChange: (e: Engine) => void }) {
+  return (
+    <fieldset className="loader-picker">
+      <legend>Engine</legend>
+      {ENGINES.map((e) => (
+        <button
+          key={e.id}
+          type="button"
+          className={`loader-option px2 ${value === e.id ? "selected" : ""}`}
+          aria-pressed={value === e.id}
+          title={e.hint}
+          onClick={() => onChange(e.id)}
+        >
+          <span className="pix">{e.label}</span>
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
+export function HorizonNote() {
+  return (
+    <p className="warning-box px2" role="alert">
+      <b>
+        <Icon name="warn" /> Experimental feature
+      </b>
+      <br />
+      Horizon is an unofficial Rust rewrite of Minecraft {HORIZON_VERSION}, still in development: expect bugs, missing features and
+      crashes, and back up worlds you care about. It runs without Java or Java mods. The first launch downloads Horizon and prepares it
+      from your Minecraft files, which takes a few minutes.
+    </p>
+  );
+}
+
 export function LoaderPicker({ value, onChange }: { value: LoaderKind | "vanilla"; onChange: (v: LoaderKind | "vanilla") => void }) {
   return (
     <fieldset className="loader-picker">
@@ -100,14 +142,19 @@ export function LoaderPicker({ value, onChange }: { value: LoaderKind | "vanilla
 
 export function NewInstanceModal({
   versions,
+  experimental,
   onCreate,
   onClose,
 }: {
   versions: VersionList | null;
+  /** Offers Horizon, an experimental engine. */
+  experimental: boolean;
   onCreate: (instance: NewInstance) => Promise<void>;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
+  const [engine, setEngine] = useState<Engine>("java");
+  const horizon = engine === "horizon";
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [version, setVersion] = useState(versions?.latestRelease ?? "");
   const [loader, setLoader] = useState<LoaderKind | "vanilla">("vanilla");
@@ -130,7 +177,7 @@ export function NewInstanceModal({
     setLoaderVersions(null);
     setLoaderVersion("");
     setLoaderError(null);
-    if (loader === "vanilla" || !version) return;
+    if (horizon || loader === "vanilla" || !version) return;
     let cancelled = false;
     api.loaderVersions(loader, version).then(
       (list) => {
@@ -143,10 +190,11 @@ export function NewInstanceModal({
     return () => {
       cancelled = true;
     };
-  }, [loader, version]);
+  }, [horizon, loader, version]);
 
-  const loaderReady = loader === "vanilla" || !!loaderVersion;
-  const flavour = LOADERS.find((l) => l.id === loader)!.label;
+  const loaderReady = horizon || loader === "vanilla" || !!loaderVersion;
+  const flavour = horizon ? "Horizon" : LOADERS.find((l) => l.id === loader)!.label;
+  const gameVersion = horizon ? HORIZON_VERSION : version;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -154,11 +202,12 @@ export function NewInstanceModal({
     try {
       await onCreate({
         name,
-        gameVersion: version,
+        engine,
+        gameVersion,
         cover,
         maxMemoryMb: memory,
-        loader: loader === "vanilla" ? null : { kind: loader, version: loaderVersion },
-        extraJvmArgs: jvmArgs,
+        loader: horizon || loader === "vanilla" ? null : { kind: loader, version: loaderVersion },
+        extraJvmArgs: horizon ? "" : jvmArgs,
       });
     } catch (err) {
       setError(String(err));
@@ -174,61 +223,70 @@ export function NewInstanceModal({
           <input
             className="input px2"
             value={name}
-            placeholder={version ? `${flavour} ${version}` : flavour}
+            placeholder={gameVersion ? `${flavour} ${gameVersion}` : flavour}
             maxLength={48}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        <div className="row">
-          <label className="field grow">
-            <span>Minecraft version</span>
-            <select className="select px2" value={version} onChange={(e) => setVersion(e.target.value)}>
-              {options.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.id}
-                  {v.id === versions?.latestRelease ? " (latest)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={showSnapshots} onChange={(e) => setShowSnapshots(e.target.checked)} />
-            Snapshots
-          </label>
-        </div>
+        {experimental && <EnginePicker value={engine} onChange={setEngine} />}
+        {horizon ? (
+          <HorizonNote />
+        ) : (
+          <>
+            <div className="row">
+              <label className="field grow">
+                <span>Minecraft version</span>
+                <select className="select px2" value={version} onChange={(e) => setVersion(e.target.value)}>
+                  {options.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.id}
+                      {v.id === versions?.latestRelease ? " (latest)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={showSnapshots} onChange={(e) => setShowSnapshots(e.target.checked)} />
+                Snapshots
+              </label>
+            </div>
 
-        <LoaderPicker value={loader} onChange={setLoader} />
-        {loader !== "vanilla" && (
-          <label className="field">
-            <span>{flavour} version</span>
-            {loaderError ? (
-              <p className="error">{loaderError}</p>
-            ) : (
-              <select
-                className="select px2"
-                value={loaderVersion}
-                disabled={!loaderVersions}
-                onChange={(e) => setLoaderVersion(e.target.value)}
-              >
-                {!loaderVersions && <option>Loading…</option>}
-                {loaderVersions?.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.id}
-                    {v.recommended ? " (recommended)" : ""}
-                  </option>
-                ))}
-              </select>
+            <LoaderPicker value={loader} onChange={setLoader} />
+            {loader !== "vanilla" && (
+              <label className="field">
+                <span>{flavour} version</span>
+                {loaderError ? (
+                  <p className="error">{loaderError}</p>
+                ) : (
+                  <select
+                    className="select px2"
+                    value={loaderVersion}
+                    disabled={!loaderVersions}
+                    onChange={(e) => setLoaderVersion(e.target.value)}
+                  >
+                    {!loaderVersions && <option>Loading…</option>}
+                    {loaderVersions?.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.id}
+                        {v.recommended ? " (recommended)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </label>
             )}
-          </label>
-        )}
 
-        <MemoryField value={memory} onChange={setMemory} />
+            <MemoryField value={memory} onChange={setMemory} />
+          </>
+        )}
         <CoverPicker value={cover} onChange={setCover} />
 
-        <button type="button" className="disclosure" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
-          <span className="chevron">▸</span> Advanced
-        </button>
-        {advanced && (
+        {!horizon && (
+          <button type="button" className="disclosure" aria-expanded={advanced} onClick={() => setAdvanced((a) => !a)}>
+            <span className="chevron">▸</span> Advanced
+          </button>
+        )}
+        {advanced && !horizon && (
           <label className="field">
             <span>Extra JVM arguments</span>
             <input
@@ -244,7 +302,7 @@ export function NewInstanceModal({
         {error && <p className="error">{error}</p>}
         <div className="modal-actions">
           <B3D onClick={onClose}>Cancel</B3D>
-          <B3D type="submit" variant="accent" disabled={!version || !loaderReady || saving}>
+          <B3D type="submit" variant="accent" disabled={!gameVersion || !loaderReady || saving}>
             <span className="pix">Create</span>
           </B3D>
         </div>

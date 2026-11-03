@@ -2,7 +2,7 @@
 
 use std::process::{ExitStatus, Stdio};
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 
@@ -31,7 +31,11 @@ pub fn spawn(command: &LaunchCommand) -> Result<GameProcess> {
     cmd.args(&command.args)
         .envs(command.env.iter().map(|(k, v)| (k, v)))
         .current_dir(&command.cwd)
-        .stdin(Stdio::null())
+        .stdin(if command.stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(false);
@@ -45,6 +49,14 @@ pub fn spawn(command: &LaunchCommand) -> Result<GameProcess> {
         path: command.program.clone(),
         source,
     })?;
+    if let (Some(text), Some(mut input)) = (command.stdin.clone(), child.stdin.take()) {
+        // Dropping `input` closes the pipe, which tells the game the input is complete.
+        tokio::spawn(async move {
+            if let Err(e) = input.write_all(text.as_bytes()).await {
+                tracing::warn!(error = %e, "could not write to the game's input");
+            }
+        });
+    }
     let (tx, lines) = mpsc::unbounded_channel();
     if let Some(out) = child.stdout.take() {
         forward(out, LogStream::Stdout, tx.clone());

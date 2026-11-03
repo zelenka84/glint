@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, type Instance, type LoaderKind, type LoaderVersion, type VersionList } from "../api";
-import { LOADERS, LoaderPicker } from "../InstanceModals";
+import { api, type Engine, type Instance, type LoaderKind, type LoaderVersion, type VersionList } from "../api";
+import { EnginePicker, HORIZON_VERSION, HorizonNote, LOADERS, LoaderPicker } from "../InstanceModals";
 import { B3D, Icon, type IconName } from "../ui";
 
 const KIND_BY_LABEL: Record<string, LoaderKind> = { Fabric: "fabric", Quilt: "quilt", Forge: "forge", NeoForge: "neoforge" };
@@ -20,8 +20,20 @@ function Component({ icon, name, version, note }: { icon: IconName; name: string
   );
 }
 
-export function VersionTab({ instance, versions, onChanged }: { instance: Instance; versions: VersionList | null; onChanged: () => void }) {
+export function VersionTab({
+  instance,
+  versions,
+  experimental,
+  onChanged,
+}: {
+  instance: Instance;
+  versions: VersionList | null;
+  experimental: boolean;
+  onChanged: () => void;
+}) {
   const currentKind = instance.loader ? KIND_BY_LABEL[instance.loader] : "vanilla";
+  const [engine, setEngine] = useState<Engine>(instance.engine);
+  const horizon = engine === "horizon";
   const [gameVersion, setGameVersion] = useState(instance.gameVersion);
   const [loader, setLoader] = useState<LoaderKind | "vanilla">(currentKind);
   const [loaderVersions, setLoaderVersions] = useState<LoaderVersion[] | null>(null);
@@ -37,7 +49,7 @@ export function VersionTab({ instance, versions, onChanged }: { instance: Instan
 
   useEffect(() => {
     setLoaderVersions(null);
-    if (loader === "vanilla") return;
+    if (horizon || loader === "vanilla") return;
     let cancelled = false;
     api.loaderVersions(loader, gameVersion).then(
       (list) => {
@@ -55,19 +67,26 @@ export function VersionTab({ instance, versions, onChanged }: { instance: Instan
     return () => {
       cancelled = true;
     };
-  }, [loader, gameVersion, currentKind, instance.gameVersion, instance.loaderVersion]);
+  }, [horizon, loader, gameVersion, currentKind, instance.gameVersion, instance.loaderVersion]);
 
   const options = useMemo(() => (versions?.versions ?? []).filter((v) => snapshots || v.release || v.id === instance.gameVersion), [versions, snapshots, instance.gameVersion]);
   const release = versions?.versions.find((v) => v.id === instance.gameVersion)?.releaseTime;
   const changed =
-    gameVersion !== instance.gameVersion || loader !== currentKind || (loader !== "vanilla" && loaderVersion !== (instance.loaderVersion ?? ""));
-  const ready = loader === "vanilla" || !!loaderVersion;
+    engine !== instance.engine ||
+    (!horizon &&
+      (gameVersion !== instance.gameVersion || loader !== currentKind || (loader !== "vanilla" && loaderVersion !== (instance.loaderVersion ?? ""))));
+  const ready = horizon || loader === "vanilla" || !!loaderVersion;
   const flavour = LOADERS.find((l) => l.id === loader)!.label;
 
   async function apply() {
     setSaving(true);
     try {
-      await api.changeVersion(instance.name, gameVersion, loader === "vanilla" ? null : { kind: loader, version: loaderVersion });
+      await api.changeVersion(
+        instance.name,
+        horizon ? HORIZON_VERSION : gameVersion,
+        horizon || loader === "vanilla" ? null : { kind: loader, version: loaderVersion },
+        engine,
+      );
       setStatus({ ok: true, text: "Saved. The next launch downloads what is needed." });
       onChanged();
     } catch (e) {
@@ -97,7 +116,9 @@ export function VersionTab({ instance, versions, onChanged }: { instance: Instan
         </header>
         <div className="component-list">
           <Component icon="cube" name="Minecraft" version={instance.gameVersion} note={release ? `released ${new Date(release).toLocaleDateString()}` : undefined} />
-          {instance.loader ? (
+          {instance.engine === "horizon" ? (
+            <Component icon="terminal" name="Horizon" version="Nightly" note="experimental Rust engine, updates itself on launch" />
+          ) : instance.loader ? (
             <Component icon="mods" name={instance.loader} version={instance.loaderVersion ?? ""} note="mod loader" />
           ) : (
             <div className="component-row muted px2">
@@ -105,7 +126,9 @@ export function VersionTab({ instance, versions, onChanged }: { instance: Instan
               <span className="grow">No mod loader · vanilla</span>
             </div>
           )}
-          <Component icon="terminal" name="Java" version="Auto" note="picked for this Minecraft version, change it in Settings" />
+          {instance.engine !== "horizon" && (
+            <Component icon="terminal" name="Java" version="Auto" note="picked for this Minecraft version, change it in Settings" />
+          )}
         </div>
       </section>
 
@@ -114,6 +137,11 @@ export function VersionTab({ instance, versions, onChanged }: { instance: Instan
           <h3 className="pix">Change version</h3>
           <p className="muted small">Worlds stay as they are. Opening a world in an older version than it was saved in can break it; back it up first.</p>
         </header>
+        {(experimental || instance.engine === "horizon") && <EnginePicker value={engine} onChange={setEngine} />}
+        {horizon ? (
+          <HorizonNote />
+        ) : (
+          <>
         <div className="row">
           <label className="field grow">
             <span>Minecraft version</span>
@@ -149,10 +177,14 @@ export function VersionTab({ instance, versions, onChanged }: { instance: Instan
             </select>
           </label>
         )}
+          </>
+        )}
         {changed && modCount > 0 && (
           <p className="hint px2">
             <Icon name="warn" /> {modCount} mod{modCount > 1 ? "s" : ""} stay installed.
-            {loader === "vanilla"
+            {horizon
+              ? " Horizon does not run Java mods."
+              : loader === "vanilla"
               ? " Vanilla ignores them."
               : " Some may not work with the new version; use Check updates in Mods afterwards."}
           </p>
@@ -167,6 +199,7 @@ export function VersionTab({ instance, versions, onChanged }: { instance: Instan
             <button
               className="tool-btn px2"
               onClick={() => {
+                setEngine(instance.engine);
                 setGameVersion(instance.gameVersion);
                 setLoader(currentKind);
               }}

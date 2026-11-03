@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type ContentKind, type Instance } from "../api";
-import { B3D, Icon } from "../ui";
+import { B3D, Icon, flavourOf } from "../ui";
 import { ContentBrowser, KIND_LABEL } from "./ContentBrowser";
 
 const KINDS: ContentKind[] = ["mod", "resourcepack", "shader"];
@@ -16,8 +16,11 @@ export function Discover({ instances, selected, onSelect, onCreate }: {
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
-  // Mods need a loader; packs work in any instance.
-  const eligible = useMemo(() => instances.filter((i) => kind !== "mod" || i.loader), [instances, kind]);
+  // Mods need a loader; packs work in any instance. Horizon takes resource packs only.
+  const eligible = useMemo(
+    () => instances.filter((i) => (kind !== "mod" || i.loader) && (i.engine !== "horizon" || kind === "resourcepack")),
+    [instances, kind],
+  );
   const instance = eligible.find((i) => i.name === selected) ?? eligible[0] ?? null;
 
   const refresh = useCallback(() => {
@@ -40,7 +43,7 @@ export function Discover({ instances, selected, onSelect, onCreate }: {
             <select className="select px2" value={instance.name} onChange={(e) => onSelect(e.target.value)}>
               {eligible.map((i) => (
                 <option key={i.name} value={i.name}>
-                  {i.name} · {i.loader ?? "Vanilla"} {i.gameVersion}
+                  {i.name} · {flavourOf(i, false)} {i.gameVersion}
                 </option>
               ))}
             </select>

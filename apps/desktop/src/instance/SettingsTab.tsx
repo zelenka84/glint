@@ -41,6 +41,8 @@ export function SettingsTab({ instance, onChanged, onDelete }: {
   onChanged: (newName?: string) => void;
   onDelete: () => void;
 }) {
+  /** Horizon is a native program: no JVM, memory or Java settings. */
+  const horizon = instance.engine === "horizon";
   const [saved, setSaved] = useState<InstanceSettings | null>(null);
   const [draft, setDraft] = useState<InstanceSettings | null>(null);
   const [worlds, setWorlds] = useState<World[]>([]);
@@ -128,74 +130,78 @@ export function SettingsTab({ instance, onChanged, onDelete }: {
         <CoverPicker value={coverFor(draft.cover, instance.name)} onChange={(c) => set({ cover: c })} />
       </Section>
 
-      <Section title="Memory" hint="How much RAM the game may use. More than 8 GB rarely helps unless the modpack is huge.">
-        <label className="field">
-          <span>
-            Maximum · <b>{gb(draft.maxMemoryMb)}</b>
-          </span>
-          <input type="range" min={1024} max={32768} step={512} value={draft.maxMemoryMb} onChange={(e) => set({ maxMemoryMb: Number(e.target.value), minMemoryMb: draft.minMemoryMb === null ? null : Math.min(draft.minMemoryMb, Number(e.target.value)) })} />
-        </label>
-        <div className="set-row">
-          <Switch on={draft.minMemoryMb !== null} label="Reserve memory at start" onChange={(on) => set({ minMemoryMb: on ? Math.min(2048, draft.maxMemoryMb) : null })} />
-          <span>Reserve memory at start (-Xms)</span>
-        </div>
-        {draft.minMemoryMb !== null && (
-          <label className="field">
-            <span>
-              Minimum · <b>{gb(draft.minMemoryMb)}</b>
-            </span>
-            <input type="range" min={512} max={draft.maxMemoryMb} step={512} value={draft.minMemoryMb} onChange={(e) => set({ minMemoryMb: Number(e.target.value) })} />
-          </label>
-        )}
-      </Section>
-
-      <Section title="Java" hint="Glint downloads the right Java for each Minecraft version. Pick your own only if you know you need it.">
-        <div className="segmented px2" role="radiogroup" aria-label="Java">
-          <button role="radio" aria-checked={draft.javaPath === null} className={draft.javaPath === null ? "on" : ""} onClick={() => set({ javaPath: null })}>
-            Automatic
-          </button>
-          <button role="radio" aria-checked={draft.javaPath !== null} className={draft.javaPath !== null ? "on" : ""} onClick={() => set({ javaPath: draft.javaPath ?? "" })}>
-            Custom
-          </button>
-        </div>
-        {draft.javaPath !== null && (
-          <>
+      {!horizon && (
+        <>
+          <Section title="Memory" hint="How much RAM the game may use. More than 8 GB rarely helps unless the modpack is huge.">
+            <label className="field">
+              <span>
+                Maximum · <b>{gb(draft.maxMemoryMb)}</b>
+              </span>
+              <input type="range" min={1024} max={32768} step={512} value={draft.maxMemoryMb} onChange={(e) => set({ maxMemoryMb: Number(e.target.value), minMemoryMb: draft.minMemoryMb === null ? null : Math.min(draft.minMemoryMb, Number(e.target.value)) })} />
+            </label>
             <div className="set-row">
-              <input className="input px2 mono grow" value={draft.javaPath} placeholder="C:\Program Files\Java\jdk-21\bin\javaw.exe" onChange={(e) => { set({ javaPath: e.target.value }); setJavaCheck(null); }} />
-              <button className="tool-btn px2" onClick={() => checkJava(draft.javaPath ?? "")} disabled={!draft.javaPath}>
-                <Icon name="check" /> Test
+              <Switch on={draft.minMemoryMb !== null} label="Reserve memory at start" onChange={(on) => set({ minMemoryMb: on ? Math.min(2048, draft.maxMemoryMb) : null })} />
+              <span>Reserve memory at start (-Xms)</span>
+            </div>
+            {draft.minMemoryMb !== null && (
+              <label className="field">
+                <span>
+                  Minimum · <b>{gb(draft.minMemoryMb)}</b>
+                </span>
+                <input type="range" min={512} max={draft.maxMemoryMb} step={512} value={draft.minMemoryMb} onChange={(e) => set({ minMemoryMb: Number(e.target.value) })} />
+              </label>
+            )}
+          </Section>
+
+          <Section title="Java" hint="Glint downloads the right Java for each Minecraft version. Pick your own only if you know you need it.">
+            <div className="segmented px2" role="radiogroup" aria-label="Java">
+              <button role="radio" aria-checked={draft.javaPath === null} className={draft.javaPath === null ? "on" : ""} onClick={() => set({ javaPath: null })}>
+                Automatic
               </button>
-              <button className="tool-btn px2" onClick={detect} disabled={detecting}>
-                {detecting ? <span className="spinner small" /> : <Icon name="search" />} Find installed
+              <button role="radio" aria-checked={draft.javaPath !== null} className={draft.javaPath !== null ? "on" : ""} onClick={() => set({ javaPath: draft.javaPath ?? "" })}>
+                Custom
               </button>
             </div>
-            {javaCheck && <p className={`small ${javaCheck.ok ? "ok-text" : "error"}`}>{javaCheck.text}</p>}
-            {javas && (
-              <div className="java-list">
-                {javas.length === 0 && <p className="muted small">No Java installs found.</p>}
-                {javas.map((j) => (
-                  <button key={j.path} className={`java-option px2 ${draft.javaPath === j.path ? "selected" : ""}`} onClick={() => { set({ javaPath: j.path }); setJavaCheck(j.version ? { ok: true, text: `Java ${j.version}` } : null); }}>
-                    <b>{j.version ? `Java ${j.version}` : "Unknown version"}</b>
-                    <span className="tag-muted px2">{j.source}</span>
-                    <span className="muted small mono grow">{j.path}</span>
+            {draft.javaPath !== null && (
+              <>
+                <div className="set-row">
+                  <input className="input px2 mono grow" value={draft.javaPath} placeholder="C:\Program Files\Java\jdk-21\bin\javaw.exe" onChange={(e) => { set({ javaPath: e.target.value }); setJavaCheck(null); }} />
+                  <button className="tool-btn px2" onClick={() => checkJava(draft.javaPath ?? "")} disabled={!draft.javaPath}>
+                    <Icon name="check" /> Test
                   </button>
-                ))}
-              </div>
+                  <button className="tool-btn px2" onClick={detect} disabled={detecting}>
+                    {detecting ? <span className="spinner small" /> : <Icon name="search" />} Find installed
+                  </button>
+                </div>
+                {javaCheck && <p className={`small ${javaCheck.ok ? "ok-text" : "error"}`}>{javaCheck.text}</p>}
+                {javas && (
+                  <div className="java-list">
+                    {javas.length === 0 && <p className="muted small">No Java installs found.</p>}
+                    {javas.map((j) => (
+                      <button key={j.path} className={`java-option px2 ${draft.javaPath === j.path ? "selected" : ""}`} onClick={() => { set({ javaPath: j.path }); setJavaCheck(j.version ? { ok: true, text: `Java ${j.version}` } : null); }}>
+                        <b>{j.version ? `Java ${j.version}` : "Unknown version"}</b>
+                        <span className="tag-muted px2">{j.source}</span>
+                        <span className="muted small mono grow">{j.path}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
-          </>
-        )}
-        <label className="field">
-          <span>JVM arguments</span>
-          <textarea className="input textarea px2 mono" rows={3} value={draft.jvmArgs} placeholder="-XX:+UseZGC" onChange={(e) => set({ jvmArgs: e.target.value })} />
-        </label>
-        <div className="chips">
-          {JVM_PRESETS.map((p) => (
-            <button key={p.label} className="chip-btn px2" title={p.hint} onClick={() => set({ jvmArgs: p.args })}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </Section>
+            <label className="field">
+              <span>JVM arguments</span>
+              <textarea className="input textarea px2 mono" rows={3} value={draft.jvmArgs} placeholder="-XX:+UseZGC" onChange={(e) => set({ jvmArgs: e.target.value })} />
+            </label>
+            <div className="chips">
+              {JVM_PRESETS.map((p) => (
+                <button key={p.label} className="chip-btn px2" title={p.hint} onClick={() => set({ jvmArgs: p.args })}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </Section>
+        </>
+      )}
 
       <Section title="Game window">
         <div className="set-row">
@@ -256,7 +262,7 @@ export function SettingsTab({ instance, onChanged, onDelete }: {
           <input className="input px2 mono" value={draft.preLaunch ?? ""} placeholder="echo starting" onChange={(e) => set({ preLaunch: e.target.value })} />
         </label>
         <label className="field">
-          <span>Wrapper (runs Java through this program)</span>
+          <span>Wrapper (runs {horizon ? "the game" : "Java"} through this program)</span>
           <input className="input px2 mono" value={draft.wrapper ?? ""} placeholder="gamemoderun" onChange={(e) => set({ wrapper: e.target.value })} />
         </label>
         <label className="field">

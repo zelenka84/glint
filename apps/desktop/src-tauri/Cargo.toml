@@ -18,6 +18,7 @@ tauri-build = { version = "2", features = [] }
 glint-auth.workspace = true
 glint-core.workspace = true
 glint-gamedir.workspace = true
+glint-horizon.workspace = true
 glint-instance.workspace = true
 glint-launch.workspace = true
 glint-loader.workspace = true

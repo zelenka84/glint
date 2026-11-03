@@ -2,6 +2,8 @@
 //!
 //! cargo run -p glint-launch --example play -- [version] [name] [loader[:version]]
 //!
+//! The version `horizon` plays on the Horizon engine instead of Java.
+//!
 //! Uses the real Glint data folder and the development offline policy.
 
 use std::io::Write;
@@ -29,7 +31,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         MetaLayout::new(paths.meta()),
         Endpoints::default(),
     );
+    let engine = if requested.as_deref() == Some("horizon") {
+        glint_core::Engine::Horizon
+    } else {
+        glint_core::Engine::Java
+    };
     let version_id = match requested {
+        Some(_) if engine == glint_core::Engine::Horizon => glint_horizon::MINECRAFT_VERSION.into(),
         Some(id) => id,
         None => meta.manifest().await?.latest.release,
     };
@@ -76,7 +84,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     accounts.save(&accounts_path)?;
 
     let request = PlayRequest {
+        engine,
         instance_name: match &loader {
+            _ if engine == glint_core::Engine::Horizon => "dev-horizon".into(),
             Some(l) => format!("dev-{version_id}-{:?}", l.kind).to_lowercase(),
             None => format!("dev-{version_id}"),
         },

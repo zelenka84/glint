@@ -16,9 +16,19 @@ pub struct LogEntry {
 #[derive(Debug, Default)]
 pub struct LogParser {
     event: Option<String>,
+    native: bool,
 }
 
 impl LogParser {
+    /// For native games such as Horizon, which log to stderr as a matter of course:
+    /// unlabelled stderr lines are `INFO` unless they report a crash.
+    pub fn native() -> Self {
+        Self {
+            native: true,
+            ..Self::default()
+        }
+    }
+
     /// Feeds one output line; returns an entry once a full one is available.
     pub fn push(&mut self, line: &LogLine) -> Option<LogEntry> {
         let text = line.text.as_str();
@@ -38,16 +48,38 @@ impl LogParser {
         if text.trim().is_empty() {
             return None;
         }
-        let level = if line.stream == LogStream::Stderr {
-            "ERROR"
-        } else {
-            "INFO"
-        };
+        let level = sniff_level(text).unwrap_or(
+            if line.stream == LogStream::Stderr && (!self.native || reports_crash(text)) {
+                "ERROR"
+            } else {
+                "INFO"
+            },
+        );
         Some(LogEntry {
             level: level.into(),
             message: text.to_owned(),
         })
     }
+}
+
+/// The level a plain log line names near its start, as `[12:00:00] [main/WARN]` or
+/// `2026-11-03T12:00:00Z  WARN horizon: …` do. Native games such as Horizon log to stderr.
+fn sniff_level(text: &str) -> Option<&'static str> {
+    let head: String = text.chars().take(64).collect();
+    head.split(|c: char| !c.is_ascii_alphabetic())
+        .find_map(|word| match word {
+            "TRACE" => Some("TRACE"),
+            "DEBUG" => Some("DEBUG"),
+            "INFO" => Some("INFO"),
+            "WARN" | "WARNING" => Some("WARN"),
+            "ERROR" => Some("ERROR"),
+            "FATAL" => Some("FATAL"),
+            _ => None,
+        })
+}
+
+fn reports_crash(text: &str) -> bool {
+    text.contains("crash report") || text.contains("panicked")
 }
 
 fn parse_event(xml: &str) -> LogEntry {
@@ -90,6 +122,42 @@ mod tests {
                 })
             })
             .collect()
+    }
+
+    #[test]
+    fn plain_lines_keep_the_level_they_name() {
+        let mut parser = LogParser::default();
+        let mut push = |text: &str| {
+            parser
+                .push(&LogLine {
+                    stream: LogStream::Stderr,
+                    text: text.into(),
+                })
+                .unwrap()
+                .level
+        };
+        assert_eq!(
+            push("2026-11-03T12:00:00Z  INFO horizon_client: loading"),
+            "INFO"
+        );
+        assert_eq!(push("[12:00:00] [Render thread/WARN]: slow"), "WARN");
+        assert_eq!(push("Exception in thread \"main\""), "ERROR");
+    }
+
+    #[test]
+    fn native_stderr_is_info_unless_it_crashed() {
+        let mut parser = LogParser::native();
+        let mut push = |text: &str| {
+            parser
+                .push(&LogLine {
+                    stream: LogStream::Stderr,
+                    text: text.into(),
+                })
+                .unwrap()
+                .level
+        };
+        assert_eq!(push("Horizon: first frame after 379 ms"), "INFO");
+        assert_eq!(push("Horizon: crash report saved to C:/x.txt"), "ERROR");
     }
 
     #[test]

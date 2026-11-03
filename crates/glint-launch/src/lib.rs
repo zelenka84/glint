@@ -1,4 +1,4 @@
-//! Launching Minecraft: Java Edition.
+//! Launching Minecraft: Java Edition, on Java or on Horizon.
 //!
 //! [`build_command`] turns a version, its install plan and the player's identity into
 //! a `java` command line; [`prepare`] extracts natives and legacy assets; [`spawn`]
@@ -6,6 +6,7 @@
 
 mod args;
 mod assets;
+mod horizon;
 pub mod injector;
 mod log;
 mod natives;
@@ -43,7 +44,7 @@ pub enum Error {
     #[error("authlib-injector: {0}")]
     Injector(String),
 
-    #[error("could not start Java at {path}: {source}")]
+    #[error("could not start the game at {path}: {source}")]
     Spawn {
         path: PathBuf,
         #[source]

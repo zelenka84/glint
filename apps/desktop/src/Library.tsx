@@ -1,6 +1,6 @@
 import type { Instance } from "./api";
 import type { Session } from "./session";
-import { B3D, Cover, Icon, XpBar, coverFor, relativeTime } from "./ui";
+import { B3D, Cover, Icon, RustBadge, XpBar, coverFor, flavourOf, relativeTime } from "./ui";
 
 type Props = {
   instances: Instance[];
@@ -41,11 +41,12 @@ export function Library(props: Props) {
                 <button className="cover-button" onClick={() => props.onOpen(instance.name)} aria-label={`Open ${instance.name}`}>
                   <Cover cover={coverFor(instance.cover, instance.name)} height={100} />
                   {running && <span className="badge pix px2">RUNNING</span>}
+                  {instance.engine === "horizon" && <RustBadge />}
                 </button>
                 <div className="instance-body">
                   <span className="card-title">{instance.name}</span>
                   <span className="card-meta">
-                    {instance.gameVersion} · {instance.loader ?? "Vanilla"} · {relativeTime(instance.lastPlayed)}
+                    {instance.gameVersion} · {flavourOf(instance, false)} · {relativeTime(instance.lastPlayed)}
                   </span>
                   {phase?.kind === "busy" ? (
                     <XpBar done={phase.done} total={phase.total} />

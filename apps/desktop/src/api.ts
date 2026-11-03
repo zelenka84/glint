@@ -7,8 +7,11 @@ export type VersionList = { latestRelease: string; versions: VersionSummary[] };
 export type Account = { name: string; uuid: string; kind: "offline" | "ely" };
 export type Accounts = { accounts: Account[]; active: string | null; offlineAllowed: boolean };
 
+export type Engine = "java" | "horizon";
+
 export type Instance = {
   name: string;
+  engine: Engine;
   gameVersion: string;
   loader: string | null;
   loaderVersion: string | null;
@@ -24,6 +27,7 @@ export type LoaderVersion = { id: string; recommended: boolean };
 
 export type NewInstance = {
   name: string;
+  engine: Engine;
   gameVersion: string;
   cover: string | null;
   maxMemoryMb: number;
@@ -157,14 +161,14 @@ export type PlayEvent =
   | { type: "resolving"; version: string }
   | {
       type: "downloading";
-      what: "game" | "java";
+      what: "game" | "java" | "horizon";
       doneFiles: number;
       totalFiles: number;
       doneBytes: number;
       totalBytes: number;
     }
   | { type: "installingLoader"; name: string }
-  | { type: "preparing" }
+  | { type: "preparing"; fraction?: number }
   | { type: "started"; pid: number | null }
   | { type: "log"; level: string; message: string }
   | { type: "exited"; code: number | null }
@@ -239,8 +243,8 @@ export const api = {
   deleteOldLogs: (instance: string) => invoke<number>("delete_old_logs", { instance }),
   readNotes: (instance: string) => invoke<string>("read_notes", { instance }),
   saveNotes: (instance: string, text: string) => invoke<void>("save_notes", { instance, text }),
-  changeVersion: (name: string, gameVersion: string, loader: { kind: LoaderKind; version: string } | null) =>
-    invoke<void>("change_version", { name, gameVersion, loader }),
+  changeVersion: (name: string, gameVersion: string, loader: { kind: LoaderKind; version: string } | null, engine?: Engine) =>
+    invoke<void>("change_version", { name, engine: engine ?? null, gameVersion, loader }),
   openLibrariesFolder: () => invoke<void>("open_libraries_folder"),
   openGameFolder: (instance: string, folder: string) => invoke<void>("open_game_subfolder", { instance, folder }),
 

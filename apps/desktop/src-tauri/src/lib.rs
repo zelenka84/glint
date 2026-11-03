@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use glint_auth::ely::ElyClient;
 use glint_auth::{Account, AccountStore, OfflinePolicy, keychain};
-use glint_core::{GlintPaths, InstanceManifest, Loader, LoaderKind};
+use glint_core::{Engine, GlintPaths, InstanceManifest, Loader, LoaderKind};
 use glint_instance::InstanceStore;
 use glint_launch::{PlayEvent, PlayRequest, QuickPlay};
 use glint_meta::mojang::VersionType;
@@ -247,6 +247,7 @@ async fn ely_sign_in(
 #[serde(rename_all = "camelCase")]
 struct InstanceView {
     name: String,
+    engine: Engine,
     game_version: String,
     loader: Option<String>,
     loader_version: Option<String>,
@@ -260,6 +261,7 @@ struct InstanceView {
 fn instance_view(m: &InstanceManifest, running: &HashSet<String>) -> InstanceView {
     InstanceView {
         name: m.name.clone(),
+        engine: m.engine,
         game_version: m.game_version.clone(),
         loader: m
             .loader
@@ -290,6 +292,8 @@ fn instances(state: State<'_, AppState>) -> CmdResult<Vec<InstanceView>> {
 #[serde(rename_all = "camelCase")]
 struct NewInstance {
     name: String,
+    /// Java when missing.
+    engine: Option<Engine>,
     game_version: String,
     cover: Option<String>,
     max_memory_mb: Option<u32>,
@@ -330,8 +334,26 @@ async fn loader_versions(
         .map_err(err)
 }
 
+/// Horizon is an experimental engine: Dev builds only.
+fn check_engine(engine: Engine) -> CmdResult<()> {
+    if engine == Engine::Horizon && !EXPERIMENTAL {
+        return Err("Horizon is experimental and only available in Dev builds".into());
+    }
+    Ok(())
+}
+
+/// Horizon plays one Minecraft version and runs no mod loaders.
+fn fit_engine(manifest: &mut InstanceManifest) {
+    if manifest.engine == Engine::Horizon {
+        manifest.game_version = glint_horizon::MINECRAFT_VERSION.into();
+        manifest.loader = None;
+    }
+}
+
 #[tauri::command]
 fn create_instance(state: State<'_, AppState>, instance: NewInstance) -> CmdResult<String> {
+    let engine = instance.engine.unwrap_or(Engine::Java);
+    check_engine(engine)?;
     let name = instance.name.trim();
     let loader = match &instance.loader {
         Some(choice) => Some(Loader {
@@ -340,18 +362,23 @@ fn create_instance(state: State<'_, AppState>, instance: NewInstance) -> CmdResu
         }),
         None => None,
     };
-    let name = if name.is_empty() {
-        let flavour = loader
-            .as_ref()
-            .map_or("Vanilla", |l| glint_loader::display_name(l.kind));
+    let mut manifest = InstanceManifest::vanilla("", instance.game_version);
+    manifest.engine = engine;
+    manifest.loader = loader;
+    fit_engine(&mut manifest);
+    manifest.name = if name.is_empty() {
+        let flavour = match (engine, &manifest.loader) {
+            (Engine::Horizon, _) => "Horizon",
+            (Engine::Java, Some(l)) => glint_loader::display_name(l.kind),
+            (Engine::Java, None) => "Vanilla",
+        };
         state
             .instances
-            .unique_name(&format!("{flavour} {}", instance.game_version))
+            .unique_name(&format!("{flavour} {}", manifest.game_version))
     } else {
         name.to_owned()
     };
-    let mut manifest = InstanceManifest::vanilla(&name, instance.game_version);
-    manifest.loader = loader;
+    let name = manifest.name.clone();
     manifest.cover = instance.cover;
     if let Some(args) = &instance.extra_jvm_args {
         manifest.java.extra_args = split_jvm_args(args);
@@ -403,12 +430,13 @@ fn update_instance(
     }
 }
 
-/// Switches the Minecraft version and/or mod loader. Mods stay in place; the UI
-/// warns that they may not fit the new version.
+/// Switches the engine, Minecraft version and/or mod loader. Mods stay in place; the
+/// UI warns that they may not fit the new version.
 #[tauri::command]
 fn change_version(
     state: State<'_, AppState>,
     name: String,
+    engine: Option<Engine>,
     game_version: String,
     loader: Option<LoaderChoice>,
 ) -> CmdResult<()> {
@@ -416,6 +444,10 @@ fn change_version(
         return Err("close the game before changing this instance".into());
     }
     let mut manifest = state.instances.get(&name).map_err(err)?;
+    if let Some(engine) = engine {
+        check_engine(engine)?;
+        manifest.engine = engine;
+    }
     manifest.game_version = game_version;
     manifest.loader = match loader {
         Some(choice) => Some(Loader {
@@ -424,6 +456,7 @@ fn change_version(
         }),
         None => None,
     };
+    fit_engine(&mut manifest);
     state.instances.save(&manifest).map_err(err)
 }
 
@@ -480,6 +513,7 @@ async fn play(
     target: Option<PlayTarget>,
 ) -> CmdResult<()> {
     let manifest = state.instances.get(&instance).map_err(err)?;
+    check_engine(manifest.engine)?;
     // An explicit world or server wins over the instance's auto-join setting.
     let quick_play = match target {
         Some(PlayTarget { world: Some(w), .. }) => Some(QuickPlay::World(w)),
@@ -529,6 +563,7 @@ async fn play(
     tauri::async_runtime::spawn(async move {
         let state = app.state::<AppState>();
         let request = PlayRequest {
+            engine: manifest.engine,
             version_id: manifest.game_version.clone(),
             instance_name: instance.clone(),
             identity,
@@ -658,6 +693,18 @@ fn content_target(state: &AppState, instance: &str) -> CmdResult<(std::path::Pat
     ))
 }
 
+/// Horizon runs no Java mods, and its shader packs are its own `.hshader` format.
+fn check_content_fits(state: &AppState, instance: &str, kind: ContentKind) -> CmdResult<()> {
+    let engine = state.instances.get(instance).map_err(err)?.engine;
+    if engine == Engine::Horizon && kind != ContentKind::ResourcePack {
+        return Err(
+            "Horizon instances take resource packs only; Java mods and shaders do not run on it"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 fn content_manager<'a>(
     state: &'a AppState,
     dir: std::path::PathBuf,
@@ -697,6 +744,7 @@ async fn install_content(
     project_id: String,
     version_id: Option<String>,
 ) -> CmdResult<Vec<String>> {
+    check_content_fits(&state, &instance, kind)?;
     let (dir, target) = content_target(&state, &instance)?;
     content_manager(&state, dir, kind)
         .install_version(&project_id, version_id.as_deref(), &target)

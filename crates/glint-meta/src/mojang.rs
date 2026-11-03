@@ -86,6 +86,8 @@ pub struct AssetIndexRef {
 #[derive(Debug, Clone, Deserialize)]
 pub struct VersionDownloads {
     pub client: DownloadInfo,
+    /// The dedicated server; Horizon prepares its data from it.
+    pub server: Option<DownloadInfo>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

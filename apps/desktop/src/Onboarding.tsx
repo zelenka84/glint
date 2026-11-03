@@ -289,6 +289,7 @@ function FirstInstance({
       }
       const name = await api.createInstance({
         name: `${starter.title} ${latest}`,
+        engine: "java",
         gameVersion: latest,
         cover: starter.cover,
         maxMemoryMb: 4096,

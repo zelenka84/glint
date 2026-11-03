@@ -21,14 +21,16 @@ function nextPhase(event: PlayEvent, previous: Phase): Phase {
     case "resolving":
       return { kind: "busy", label: `Checking ${event.version}`, done: 0, total: 1 };
     case "downloading": {
-      const what = event.what === "java" ? "Java" : "game files";
+      const what = { java: "Java", horizon: "Horizon", game: "game files" }[event.what];
       const label = `Downloading ${what} · ${mb(event.doneBytes)}/${mb(event.totalBytes)} MB`;
       return { kind: "busy", label, done: event.doneBytes, total: Math.max(event.totalBytes, 1) };
     }
     case "installingLoader":
       return { kind: "busy", label: `Installing ${event.name} · first time can take a minute`, done: 1, total: 2 };
     case "preparing":
-      return { kind: "busy", label: "Preparing", done: 1, total: 1 };
+      return event.fraction === undefined
+        ? { kind: "busy", label: "Preparing", done: 1, total: 1 }
+        : { kind: "busy", label: `Preparing Horizon · ${Math.round(event.fraction * 100)}%`, done: event.fraction, total: 1 };
     case "started":
       return { kind: "running" };
     case "exited":

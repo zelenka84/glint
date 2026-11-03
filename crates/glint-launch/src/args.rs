@@ -34,6 +34,8 @@ pub struct LaunchCommand {
     pub cwd: PathBuf,
     /// Added to the inherited environment.
     pub env: Vec<(String, String)>,
+    /// Written to the game's standard input, which is then closed.
+    pub stdin: Option<String>,
 }
 
 pub fn build_command(
@@ -120,6 +122,7 @@ pub fn build_command(
         args,
         cwd: options.game_dir.clone(),
         env: Vec::new(),
+        stdin: None,
     }
 }
 

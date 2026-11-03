@@ -2,7 +2,7 @@ import { type ReactNode } from "react";
 import type { Accounts, Instance, PlayTarget, VersionList } from "../api";
 import { PlayControl } from "../Home";
 import type { Session } from "../session";
-import { B3D, Cover, Icon, type IconName, coverFor, relativeTime } from "../ui";
+import { B3D, Cover, Icon, type IconName, RustBadge, coverFor, flavourOf, relativeTime } from "../ui";
 import { ContentTab } from "../content/ContentTab";
 import { LogsTab } from "./LogsTab";
 import { LogTab } from "./LogTab";
@@ -25,6 +25,9 @@ export type InstanceTab =
   | "notes"
   | "settings"
   | "logs";
+
+/** Horizon runs no Java mods, and its shader packs are its own format. */
+const JAVA_ONLY_TABS: InstanceTab[] = ["mods", "shaders"];
 
 const TABS: { id: InstanceTab; label: string; icon: IconName; group?: string }[] = [
   { id: "log", label: "Game log", icon: "terminal" },
@@ -54,11 +57,18 @@ export type InstancePageProps = {
   onChanged: (newName?: string) => void;
   onDelete: (instance: Instance) => void;
   versions: VersionList | null;
+  /** Dev builds: offers the Horizon engine. */
+  experimental: boolean;
 };
 
 export function InstancePage(props: InstancePageProps) {
   const { instance, tab } = props;
-  const flavour = instance.loader ? `${instance.loader} ${instance.loaderVersion ?? ""}` : "Vanilla";
+  const horizon = instance.engine === "horizon";
+  const flavour = flavourOf(instance);
+  // Content moved under the Content group when the first of its tabs is hidden.
+  const tabs = horizon
+    ? TABS.filter((t) => !JAVA_ONLY_TABS.includes(t.id)).map((t) => (t.id === "resourcepacks" ? { ...t, group: "Content" } : t))
+    : TABS;
 
   let content: ReactNode;
   switch (tab) {
@@ -91,7 +101,9 @@ export function InstancePage(props: InstancePageProps) {
       content = <SettingsTab instance={instance} onChanged={props.onChanged} onDelete={() => props.onDelete(instance)} />;
       break;
     case "version":
-      content = <VersionTab instance={instance} versions={props.versions} onChanged={() => props.onChanged()} />;
+      content = (
+        <VersionTab instance={instance} versions={props.versions} experimental={props.experimental} onChanged={() => props.onChanged()} />
+      );
       break;
     case "notes":
       content = <NotesTab instance={instance} />;
@@ -114,9 +126,10 @@ export function InstancePage(props: InstancePageProps) {
           </button>
           <h1 className="pix">{instance.name}</h1>
           <div className="chips">
+            {horizon && <RustBadge chip />}
             <span className="chip px2">{instance.gameVersion}</span>
             <span className="chip px2">{flavour}</span>
-            <span className="chip px2">{instance.maxMemoryMb / 1024} GB</span>
+            {!horizon && <span className="chip px2">{instance.maxMemoryMb / 1024} GB</span>}
             <span className="chip px2">{relativeTime(instance.lastPlayed)}</span>
           </div>
         </div>
@@ -136,7 +149,7 @@ export function InstancePage(props: InstancePageProps) {
 
       <div className="ip-body">
         <nav className="ip-nav" aria-label="Instance sections">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <div key={t.id} className="ip-nav-entry">
               {t.group && <span className="label ip-group">{t.group.toUpperCase()}</span>}
               <button

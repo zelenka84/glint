@@ -36,6 +36,11 @@ impl GlintPaths {
         self.root.join("meta")
     }
 
+    /// Horizon builds and the resources prepared for them.
+    pub fn horizon(&self) -> PathBuf {
+        self.root.join("horizon")
+    }
+
     pub fn java(&self) -> PathBuf {
         self.root.join("java")
     }
